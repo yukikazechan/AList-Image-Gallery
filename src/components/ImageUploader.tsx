@@ -1,27 +1,53 @@
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { AlistService } from "@/services/alistService";
-import { Upload } from "lucide-react";
+import { AlistService, FileInfo } from "@/services/alistService";
+import { Upload, FolderOpen, ChevronLeft, Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ImageUploaderProps {
   alistService: AlistService | null;
   currentPath: string;
   onUploadSuccess: () => void;
+  onPathChange: (path: string) => void;
 }
 
 const ImageUploader: React.FC<ImageUploaderProps> = ({ 
   alistService,
   currentPath,
-  onUploadSuccess
+  onUploadSuccess,
+  onPathChange
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [files, setFiles] = useState<FileList | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [directories, setDirectories] = useState<FileInfo[]>([]);
+  const [isLoadingDirs, setIsLoadingDirs] = useState(false);
+
+  // Load directories in the current path
+  const loadDirectories = useCallback(async () => {
+    if (!alistService) return;
+    
+    setIsLoadingDirs(true);
+    try {
+      const filesList = await alistService.listFiles(currentPath);
+      // Filter to only show directories
+      const dirs = filesList.filter(file => file.is_dir);
+      setDirectories(dirs);
+    } catch (error: any) {
+      toast.error(`Error loading directories: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsLoadingDirs(false);
+    }
+  }, [alistService, currentPath]);
+
+  useEffect(() => {
+    loadDirectories();
+  }, [loadDirectories]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
@@ -60,7 +86,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       await alistService.uploadFile(currentPath, file);
       
       // Get the file link
-      const fileLink = await alistService.getFileLink(`${currentPath}/${file.name}`);
+      const fileLink = await alistService.getFileLink(`${currentPath}${currentPath.endsWith('/') ? '' : '/'}${file.name}`);
       setUploadedImageUrl(fileLink);
       
       onUploadSuccess();
@@ -78,6 +104,37 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   }, [uploadedImageUrl]);
 
+  const handlePathChange = (path: string) => {
+    onPathChange(path);
+  };
+
+  const navigateToFolder = (folderName: string) => {
+    const newPath = `${currentPath}${currentPath.endsWith('/') ? '' : '/'}${folderName}`;
+    onPathChange(newPath);
+  };
+
+  const navigateUp = () => {
+    if (currentPath === "/") return;
+    
+    const newPath = currentPath.split("/").slice(0, -1).join("/") || "/";
+    onPathChange(newPath);
+  };
+
+  const handleCreateFolder = async () => {
+    if (!alistService) return;
+    
+    const folderName = prompt("Enter new folder name:");
+    if (!folderName) return;
+    
+    try {
+      await alistService.createFolder(currentPath, folderName);
+      toast.success(`Folder "${folderName}" created successfully`);
+      loadDirectories();
+    } catch (error: any) {
+      toast.error(`Failed to create folder: ${error.message || 'Unknown error'}`);
+    }
+  };
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -86,6 +143,59 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
+          {/* Path navigation */}
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={navigateUp}
+                disabled={currentPath === "/"}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Up
+              </Button>
+              <span className="text-sm font-medium">Current path: {currentPath}</span>
+            </div>
+            
+            <div className="flex flex-wrap gap-2 mt-2">
+              {isLoadingDirs ? (
+                <div className="flex items-center space-x-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Loading...</span>
+                </div>
+              ) : (
+                <>
+                  {directories.length === 0 ? (
+                    <p className="text-sm text-gray-500">No subfolders in this directory</p>
+                  ) : (
+                    <Select onValueChange={navigateToFolder}>
+                      <SelectTrigger className="w-[250px]">
+                        <SelectValue placeholder="Select a folder" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {directories.map((dir) => (
+                          <SelectItem key={dir.name} value={dir.name}>
+                            <div className="flex items-center">
+                              <FolderOpen className="h-4 w-4 mr-2 text-yellow-500" />
+                              {dir.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Button variant="outline" size="sm" onClick={handleCreateFolder}>
+                    Create Folder
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={loadDirectories}>
+                    Refresh
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+
           <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
             <Input
               type="file"
@@ -114,7 +224,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
               ) : (
                 <>
                   <Upload className="mr-2 h-4 w-4" />
-                  Upload Image
+                  Upload to {currentPath}
                 </>
               )}
             </Button>

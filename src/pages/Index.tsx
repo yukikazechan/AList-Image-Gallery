@@ -11,24 +11,30 @@ const Index = () => {
   const [token, setToken] = useState<string>(() => {
     return localStorage.getItem("alist_token") || "";
   });
+  const [serverUrl, setServerUrl] = useState<string>(() => {
+    return localStorage.getItem("alist_server_url") || "";
+  });
   const [path, setPath] = useState<string>("/");
   const [alistService, setAlistService] = useState<AlistService | null>(null);
 
   // Initialize AlistService when token changes
   useEffect(() => {
-    if (token) {
+    if (token && serverUrl) {
       localStorage.setItem("alist_token", token);
-      const service = new AlistService(token);
+      localStorage.setItem("alist_server_url", serverUrl);
+      const service = new AlistService(token, serverUrl);
       setAlistService(service);
     } else {
-      localStorage.removeItem("alist_token");
+      if (!token) localStorage.removeItem("alist_token");
+      if (!serverUrl) localStorage.removeItem("alist_server_url");
       setAlistService(null);
     }
-  }, [token]);
+  }, [token, serverUrl]);
 
-  const handleTokenSubmit = (newToken: string) => {
+  const handleConnectionSubmit = (newToken: string, newServerUrl: string) => {
     setToken(newToken);
-    toast.success("Token saved successfully!");
+    setServerUrl(newServerUrl);
+    toast.success("Connection settings saved successfully!");
   };
 
   const handleUploadSuccess = () => {
@@ -43,11 +49,15 @@ const Index = () => {
           <p className="text-gray-600">Upload and manage your images with AList</p>
         </header>
 
-        {!token && (
-          <TokenInput onSubmit={handleTokenSubmit} />
+        {(!token || !serverUrl) && (
+          <TokenInput 
+            initialToken={token} 
+            initialServerUrl={serverUrl}
+            onSubmit={handleConnectionSubmit} 
+          />
         )}
 
-        {token && (
+        {token && serverUrl && (
           <Tabs defaultValue="upload" className="w-full">
             <TabsList className="grid w-full grid-cols-3 mb-8">
               <TabsTrigger value="upload">Upload Images</TabsTrigger>
@@ -60,6 +70,7 @@ const Index = () => {
                 alistService={alistService}
                 currentPath={path}
                 onUploadSuccess={handleUploadSuccess}
+                onPathChange={setPath}
               />
             </TabsContent>
             
@@ -74,7 +85,8 @@ const Index = () => {
             <TabsContent value="settings">
               <TokenInput 
                 initialToken={token} 
-                onSubmit={handleTokenSubmit} 
+                initialServerUrl={serverUrl}
+                onSubmit={handleConnectionSubmit} 
                 isUpdate={true} 
               />
             </TabsContent>
