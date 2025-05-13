@@ -1,0 +1,291 @@
+
+import React, { useState, useEffect } from "react";
+import { AlistService, FileInfo } from "@/services/alistService";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { 
+  ChevronLeft, 
+  FolderOpen, 
+  Image as ImageIcon, 
+  Link, 
+  Trash2,
+  Loader2
+} from "lucide-react";
+import { toast } from "sonner";
+import { 
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
+
+interface GalleryProps {
+  alistService: AlistService | null;
+  path: string;
+  onPathChange: (path: string) => void;
+}
+
+const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) => {
+  const [files, setFiles] = useState<FileInfo[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [showFullImage, setShowFullImage] = useState<boolean>(false);
+  
+  const loadFiles = async () => {
+    if (!alistService) return;
+    
+    setLoading(true);
+    try {
+      const filesList = await alistService.listFiles(path);
+      // Filter to only show directories and images
+      const filteredFiles = filesList.filter(file => 
+        file.is_dir || file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)
+      );
+      setFiles(filteredFiles);
+    } catch (error: any) {
+      toast.error(`Error loading files: ${error.message || 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadFiles();
+  }, [alistService, path]);
+
+  const handleNavigate = (file: FileInfo) => {
+    if (file.is_dir) {
+      onPathChange(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
+    } else {
+      handleViewImage(file);
+    }
+  };
+
+  const handleViewImage = async (file: FileInfo) => {
+    if (!alistService) return;
+    
+    try {
+      const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
+      setCurrentImageUrl(fileUrl);
+    } catch (error: any) {
+      toast.error(`Error getting image link: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleCopyLink = async (file: FileInfo) => {
+    if (!alistService) return;
+    
+    try {
+      const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
+      await navigator.clipboard.writeText(fileUrl);
+      toast.success("Image link copied to clipboard");
+    } catch (error: any) {
+      toast.error(`Error copying link: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleDelete = async (file: FileInfo) => {
+    if (!alistService) return;
+    
+    if (!window.confirm(`Are you sure you want to delete ${file.name}?`)) {
+      return;
+    }
+    
+    try {
+      await alistService.deleteFile(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
+      toast.success(`${file.name} deleted successfully`);
+      loadFiles();
+    } catch (error: any) {
+      toast.error(`Error deleting file: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const navigateUp = () => {
+    if (path === "/") return;
+    
+    const newPath = path.split("/").slice(0, -1).join("/") || "/";
+    onPathChange(newPath);
+  };
+
+  const isImageFile = (file: FileInfo) => !file.is_dir && file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={navigateUp}
+            disabled={path === "/"}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Up
+          </Button>
+          <span className="text-sm font-medium">Current path: {path}</span>
+        </div>
+        <Button variant="outline" size="sm" onClick={loadFiles}>
+          Refresh
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center p-12">
+          <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+        </div>
+      ) : files.length === 0 ? (
+        <div className="text-center p-12 text-gray-500">
+          No images or folders found in this directory
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+          {files.map((file) => (
+            <Card key={file.name} className="overflow-hidden">
+              <CardContent className="p-0">
+                <div 
+                  className="cursor-pointer"
+                  onClick={() => handleNavigate(file)}
+                >
+                  {file.is_dir ? (
+                    <div className="h-32 flex items-center justify-center bg-gray-100">
+                      <FolderOpen className="h-12 w-12 text-yellow-500" />
+                    </div>
+                  ) : isImageFile(file) ? (
+                    <div className="h-32 bg-black flex items-center justify-center overflow-hidden">
+                      <img
+                        src={file.thumb || ""}
+                        alt={file.name}
+                        className="object-cover h-full w-full"
+                        onError={(e) => {
+                          // Handle thumb loading error
+                          e.currentTarget.src = '/placeholder.svg';
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-32 flex items-center justify-center bg-gray-100">
+                      <ImageIcon className="h-12 w-12 text-gray-400" />
+                    </div>
+                  )}
+                </div>
+                <div className="p-2">
+                  <p className="text-xs font-medium truncate" title={file.name}>
+                    {file.name}
+                  </p>
+                  <div className="flex justify-between mt-2">
+                    {!file.is_dir && isImageFile(file) && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyLink(file);
+                          }}
+                        >
+                          <Link className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(file);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                    {file.is_dir && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleNavigate(file);
+                        }}
+                      >
+                        <FolderOpen className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {currentImageUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4"
+             onClick={() => setShowFullImage(false)}>
+          <div className="relative bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-hidden"
+               onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 flex justify-between items-center border-b">
+              <h3 className="font-medium">Image Preview</h3>
+              <Button variant="ghost" size="sm" onClick={() => setCurrentImageUrl(null)}>
+                Close
+              </Button>
+            </div>
+            <div className="p-4 overflow-auto" style={{maxHeight: 'calc(90vh - 60px)'}}>
+              <img 
+                src={currentImageUrl} 
+                alt="Preview" 
+                className={`max-w-full ${showFullImage ? '' : 'max-h-[70vh]'}`}
+                style={{cursor: showFullImage ? 'zoom-out' : 'zoom-in'}}
+                onClick={() => setShowFullImage(!showFullImage)}
+              />
+            </div>
+            <div className="p-4 border-t">
+              <Button onClick={() => {
+                navigator.clipboard.writeText(currentImageUrl);
+                toast.success("Image URL copied to clipboard");
+              }}>
+                Copy Image URL
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {files.filter(isImageFile).length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-lg font-semibold mb-4">Image Carousel</h3>
+          <Carousel className="w-full">
+            <CarouselContent>
+              {files.filter(isImageFile).map((file) => (
+                <CarouselItem key={file.name} className="md:basis-1/2 lg:basis-1/3">
+                  <div className="p-1">
+                    <Card>
+                      <CardContent className="flex aspect-square items-center justify-center p-6">
+                        <img
+                          src={file.thumb || ""}
+                          alt={file.name}
+                          className="object-cover h-full w-full rounded"
+                          onClick={() => handleViewImage(file)}
+                          style={{cursor: 'pointer'}}
+                          onError={(e) => {
+                            e.currentTarget.src = '/placeholder.svg';
+                          }}
+                        />
+                      </CardContent>
+                    </Card>
+                  </div>
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+            <CarouselPrevious />
+            <CarouselNext />
+          </Carousel>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Gallery;

@@ -1,84 +1,88 @@
 
 import React, { useState, useEffect } from "react";
-import { v4 as uuidv4 } from "uuid";
-import { Task } from "../types/task";
-import TaskList from "../components/TaskList";
-import TaskForm from "../components/TaskForm";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import TokenInput from "@/components/TokenInput";
+import ImageUploader from "@/components/ImageUploader";
+import Gallery from "@/components/Gallery";
+import { AlistService } from "@/services/alistService";
 
 const Index = () => {
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    // Load tasks from localStorage if available
-    const savedTasks = localStorage.getItem("tasks");
-    return savedTasks ? JSON.parse(savedTasks) : [
-      {
-        id: uuidv4(),
-        title: "Welcome to TaskMaster!",
-        description: "This is a sample task. Create your own tasks or mark this as complete.",
-        completed: false,
-        createdAt: new Date(),
-        dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000) // Tomorrow
-      }
-    ];
+  const [token, setToken] = useState<string>(() => {
+    return localStorage.getItem("alist_token") || "";
   });
+  const [path, setPath] = useState<string>("/");
+  const [alistService, setAlistService] = useState<AlistService | null>(null);
 
-  // Save tasks to localStorage whenever they change
+  // Initialize AlistService when token changes
   useEffect(() => {
-    localStorage.setItem("tasks", JSON.stringify(tasks));
-  }, [tasks]);
+    if (token) {
+      localStorage.setItem("alist_token", token);
+      const service = new AlistService(token);
+      setAlistService(service);
+    } else {
+      localStorage.removeItem("alist_token");
+      setAlistService(null);
+    }
+  }, [token]);
 
-  const addTask = (taskData: Omit<Task, "id" | "completed" | "createdAt">) => {
-    const newTask: Task = {
-      id: uuidv4(),
-      ...taskData,
-      completed: false,
-      createdAt: new Date(),
-    };
-    
-    setTasks([newTask, ...tasks]);
+  const handleTokenSubmit = (newToken: string) => {
+    setToken(newToken);
+    toast.success("Token saved successfully!");
   };
 
-  const toggleComplete = (id: string, completed: boolean) => {
-    setTasks(
-      tasks.map((task) => {
-        if (task.id === id) {
-          const updatedTask = { ...task, completed };
-          
-          if (completed) {
-            toast.success("Task completed!");
-          }
-          
-          return updatedTask;
-        }
-        return task;
-      })
-    );
-  };
-
-  const deleteTask = (id: string) => {
-    setTasks(tasks.filter((task) => task.id !== id));
-    toast.success("Task deleted");
+  const handleUploadSuccess = () => {
+    toast.success("Image uploaded successfully!");
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container max-w-2xl py-8 px-4">
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="container max-w-4xl mx-auto">
         <header className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-task mb-2">TaskMaster</h1>
-          <p className="text-gray-600">Organize your day, achieve your goals</p>
+          <h1 className="text-3xl font-bold text-purple-700 mb-2">AList Image Gallery</h1>
+          <p className="text-gray-600">Upload and manage your images with AList</p>
         </header>
-        
-        <main>
-          <TaskForm onAddTask={addTask} />
-          <TaskList 
-            tasks={tasks} 
-            onToggleComplete={toggleComplete} 
-            onDelete={deleteTask} 
-          />
-        </main>
-        
+
+        {!token && (
+          <TokenInput onSubmit={handleTokenSubmit} />
+        )}
+
+        {token && (
+          <Tabs defaultValue="upload" className="w-full">
+            <TabsList className="grid w-full grid-cols-3 mb-8">
+              <TabsTrigger value="upload">Upload Images</TabsTrigger>
+              <TabsTrigger value="gallery">Gallery</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="upload">
+              <ImageUploader
+                alistService={alistService}
+                currentPath={path}
+                onUploadSuccess={handleUploadSuccess}
+              />
+            </TabsContent>
+            
+            <TabsContent value="gallery">
+              <Gallery
+                alistService={alistService}
+                path={path}
+                onPathChange={setPath}
+              />
+            </TabsContent>
+            
+            <TabsContent value="settings">
+              <TokenInput 
+                initialToken={token} 
+                onSubmit={handleTokenSubmit} 
+                isUpdate={true} 
+              />
+            </TabsContent>
+          </Tabs>
+        )}
+
         <footer className="mt-12 text-center text-gray-500 text-sm">
-          <p>TaskMaster &copy; 2023</p>
+          <p>AList Image Gallery &copy; {new Date().getFullYear()}</p>
         </footer>
       </div>
     </div>
