@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -26,11 +26,13 @@ const TokenInput: React.FC<TokenInputProps> = ({
   const [serverUrl, setServerUrl] = useState<string>(initialServerUrl);
   const [isValidating, setIsValidating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [detailedError, setDetailedError] = useState<string | null>(null);
 
   const validateAndSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     setError(null);
+    setDetailedError(null);
     
     if (!token.trim() || !serverUrl.trim()) {
       setError("Please enter both server URL and token");
@@ -50,6 +52,10 @@ const TokenInput: React.FC<TokenInputProps> = ({
     
     setIsValidating(true);
     try {
+      // Show what values we're using for connection
+      console.log("Connecting with URL:", urlWithProtocol);
+      console.log("Token length:", token.trim().length);
+      
       // Test the connection before saving
       const testService = new AlistService(token.trim(), urlWithProtocol);
       const isValid = await testService.testConnection();
@@ -65,10 +71,18 @@ const TokenInput: React.FC<TokenInputProps> = ({
     } catch (error: any) {
       const errorMsg = `Connection failed: ${error.message || 'Unknown error'}`;
       setError(errorMsg);
+      setDetailedError(`Error details: ${JSON.stringify(error, null, 2)}`);
       toast.error(errorMsg);
     } finally {
       setIsValidating(false);
     }
+  };
+
+  // Try to fix potential token format issues
+  const handleTokenChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Remove any accidental whitespace
+    setToken(value.trim());
   };
 
   return (
@@ -88,6 +102,11 @@ const TokenInput: React.FC<TokenInputProps> = ({
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Connection Error</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
+              {detailedError && (
+                <div className="mt-2 text-xs bg-gray-900 text-white p-2 rounded overflow-auto max-h-32">
+                  {detailedError}
+                </div>
+              )}
             </Alert>
           )}
 
@@ -110,7 +129,7 @@ const TokenInput: React.FC<TokenInputProps> = ({
                 id="token"
                 placeholder="Enter your AList token"
                 value={token}
-                onChange={(e) => setToken(e.target.value)}
+                onChange={handleTokenChange}
                 required
                 disabled={isValidating}
               />

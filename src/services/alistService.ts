@@ -1,3 +1,4 @@
+
 import axios, { AxiosInstance } from "axios";
 
 export interface FileInfo {
@@ -21,22 +22,35 @@ export interface ListResponse {
 export class AlistService {
   private client: AxiosInstance;
   private baseUrl: string;
+  private token: string;
   
   constructor(token: string, baseUrl: string = "") {
-    this.baseUrl = baseUrl || "";
+    this.token = token.trim();
+    this.baseUrl = baseUrl.trim();
     
     this.client = axios.create({
       baseURL: this.baseUrl,
       headers: {
-        Authorization: `Bearer ${token}`
+        Authorization: `Bearer ${this.token}`
       }
     });
   }
 
   // 设置基础 URL
   setBaseUrl(url: string) {
-    this.baseUrl = url;
-    this.client.defaults.baseURL = url;
+    this.baseUrl = url.trim();
+    this.client.defaults.baseURL = this.baseUrl;
+  }
+
+  // 设置Token
+  setToken(token: string) {
+    this.token = token.trim();
+    this.client = axios.create({
+      baseURL: this.baseUrl,
+      headers: {
+        Authorization: `Bearer ${this.token}`
+      }
+    });
   }
 
   // 获取当前基础URL
@@ -47,6 +61,9 @@ export class AlistService {
   // Test connection to verify credentials
   async testConnection(): Promise<boolean> {
     try {
+      console.log('Testing connection with URL:', this.baseUrl);
+      console.log('Authorization header:', `Bearer ${this.token.substring(0, 5)}...`);
+      
       const response = await this.client.post('/api/fs/list', { path: '/' });
       console.log('Connection test response:', response.data);
       
@@ -63,13 +80,16 @@ export class AlistService {
       if (error.response) {
         // The request was made and the server responded with a status code
         // that falls out of the range of 2xx
-        console.error('Server error:', error.response.data);
+        console.error('Server error details:', error.response.data);
+        console.error('Status code:', error.response.status);
+        
         if (error.response.status === 401) {
-          throw new Error(`Authentication failed: ${error.response.data?.message || 'Invalid token'}`);
+          throw new Error(`Authentication failed: ${error.response.data?.message || 'token is invalidated'}`);
         }
         throw new Error(`Server error: ${error.response.data?.message || error.response.statusText || 'Unknown server error'}`);
       } else if (error.request) {
         // The request was made but no response was received
+        console.error('No response received for request:', error.request);
         throw new Error('No response from server. Please check your server URL and network connection.');
       }
       
@@ -81,6 +101,7 @@ export class AlistService {
   // 获取文件列表
   async listFiles(path: string): Promise<FileInfo[]> {
     try {
+      console.log('Listing files at path:', path);
       const response = await this.client.post('/api/fs/list', { path });
       
       // Check if request was successful
