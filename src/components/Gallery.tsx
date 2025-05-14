@@ -30,8 +30,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [currentFile, setCurrentFile] = useState<FileInfo | null>(null); // Add state for current file info
   const [showFullImage, setShowFullImage] = useState<boolean>(false);
-  
+
   const loadFiles = async () => {
     if (!alistService) return;
     
@@ -39,8 +40,8 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
     try {
       const filesList = await alistService.listFiles(path);
       // Filter to only show directories and images
-      const filteredFiles = filesList.filter(file => 
-        file.is_dir || file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)
+      const filteredFiles = filesList.filter(file =>
+        file.is_dir || file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif|mp4|webm|mov|avi|mkv)$/i)
       );
       setFiles(filteredFiles);
     } catch (error: any) {
@@ -68,6 +69,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
     try {
       const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
       setCurrentImageUrl(fileUrl);
+      setCurrentFile(file); // Save the current file info
     } catch (error: any) {
       toast.error(`Error getting image link: ${error.message || 'Unknown error'}`);
     }
@@ -161,7 +163,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
     onPathChange(newPath);
   };
 
-  const isImageFile = (file: FileInfo) => !file.is_dir && file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i);
+  const isImageFile = (file: FileInfo) => !file.is_dir && file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif)$/i);
+
+  const isVideoFile = (file: FileInfo) => !file.is_dir && file.name.match(/\.(mp4|webm|mov|avi|mkv)$/i);
 
   return (
     <div className="space-y-4">
@@ -216,6 +220,17 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                         }}
                       />
                     </div>
+                  ) : isVideoFile(file) ? (
+                    <div className="h-32 bg-black flex items-center justify-center overflow-hidden">
+                       <video
+                         src={file.thumb || ""} // Use thumb for poster if available, or consider a default video thumbnail
+                         controls // Add controls for playback
+                         className="object-cover h-full w-full"
+                         poster={file.thumb || '/placeholder.svg'} // Use thumbnail as poster
+                       >
+                         Your browser does not support the video tag.
+                       </video>
+                    </div>
                   ) : (
                     <div className="h-32 flex items-center justify-center bg-gray-100">
                       <ImageIcon className="h-12 w-12 text-gray-400" />
@@ -227,7 +242,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                     {file.name}
                   </p>
                   <div className="flex flex-col mt-2 space-y-2"> {/* Outer container for two rows */}
-                    {!file.is_dir && isImageFile(file) && (
+                    {!file.is_dir && (isImageFile(file) || isVideoFile(file)) && (
                       <>
                         {/* First row: Original, MD, HTML */}
                         <div className="flex space-x-1"> {/* Container for first row buttons */}
@@ -237,53 +252,59 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                             size="sm"
                             className="h-8 w-8 p-0"
                             onClick={(e) => {
-                              e.stopPropagation();
-                              handleCopyLink(file); // This copies the raw URL
+                            e.stopPropagation();
+                            handleCopyLink(file); // This copies the raw URL
                             }}
                           >
                             <Link className="h-4 w-4" />
                           </Button>
 
                           {/* Markdown Button */}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-2 text-xs"
-                            onClick={(e) => {
+                          {isImageFile(file) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-2 text-xs"
+                              onClick={(e) => {
                               e.stopPropagation();
                               handleCopyMarkdownLink(file);
-                            }}
-                          >
-                            MD
-                          </Button>
+                              }}
+                            >
+                              MD
+                            </Button>
+                          )}
                           {/* HTML Button */}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-2 text-xs"
-                            onClick={(e) => {
+                           {isImageFile(file) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-2 text-xs"
+                              onClick={(e) => {
                               e.stopPropagation();
                               handleCopyHtmlLink(file);
-                            }}
-                          >
-                            HTML
-                          </Button>
+                              }}
+                            >
+                              HTML
+                            </Button>
+                           )}
                         </div>
 
                         {/* Second row: UBB, Thumb, Delete */}
                         <div className="flex space-x-1 justify-end"> {/* Container for second row buttons, align to end */}
                           {/* UBB Button */}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-2 text-xs"
-                            onClick={(e) => {
+                          {isImageFile(file) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-2 text-xs"
+                              onClick={(e) => {
                               e.stopPropagation();
                               handleCopyUbbLink(file);
-                            }}
-                          >
-                            UBB
-                          </Button>
+                              }}
+                            >
+                              UBB
+                            </Button>
+                          )}
                           {/* Thumbnail Button */}
                           {file.thumb && (
                             <Button
@@ -291,8 +312,8 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                               size="sm"
                               className="h-8 px-2 text-xs"
                               onClick={(e) => {
-                                e.stopPropagation();
-                                handleCopyThumbnailLink(file);
+                              e.stopPropagation();
+                              handleCopyThumbnailLink(file);
                               }}
                             >
                               Thumb
@@ -304,8 +325,8 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                             size="sm"
                             className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
                             onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(file);
+                            e.stopPropagation();
+                            handleDelete(file);
                             }}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -319,8 +340,8 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                         size="sm"
                         className="h-8 w-8 p-0"
                         onClick={(e) => {
-                          e.stopPropagation();
-                          handleNavigate(file);
+                        e.stopPropagation();
+                        handleNavigate(file);
                         }}
                       >
                         <FolderOpen className="h-4 w-4" />
@@ -334,58 +355,84 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
         </div>
       )}
 
-      {currentImageUrl && (
+      {/* Full screen preview - Needs update for video */}
+      {/* Full screen preview - Updated for video */}
+      {currentFile && currentImageUrl && (
         <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4"
-             onClick={() => setShowFullImage(false)}>
+             onClick={() => setCurrentFile(null)}> {/* Close on clicking outside */}
           <div className="relative bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-hidden"
-               onClick={(e) => e.stopPropagation()}>
+               onClick={(e) => e.stopPropagation()}> {/* Prevent closing when clicking inside */}
             <div className="p-4 flex justify-between items-center border-b">
-              <h3 className="font-medium">Image Preview</h3>
-              <Button variant="ghost" size="sm" onClick={() => setCurrentImageUrl(null)}>
+              <h3 className="font-medium">{isVideoFile(currentFile) ? 'Video Preview' : 'Image Preview'}</h3>
+              <Button variant="ghost" size="sm" onClick={() => setCurrentFile(null)}>
                 Close
               </Button>
             </div>
             <div className="p-4 overflow-auto" style={{maxHeight: 'calc(90vh - 60px)'}}>
-              <img
-                src={currentImageUrl}
-                alt="Preview"
-                className={`max-w-full ${showFullImage ? '' : 'max-h-[70vh]'}`}
-                style={{cursor: showFullImage ? 'zoom-out' : 'zoom-in'}}
-                onClick={() => setShowFullImage(!showFullImage)}
-              />
+              {isVideoFile(currentFile) ? (
+                 <video
+                   src={currentImageUrl}
+                   controls
+                   className="max-w-full max-h-[70vh]"
+                 >
+                   Your browser does not support the video tag.
+                 </video>
+              ) : (
+                <img
+                  src={currentImageUrl}
+                  alt="Preview"
+                  className={`max-w-full ${showFullImage ? '' : 'max-h-[70vh]'}`}
+                  style={{cursor: showFullImage ? 'zoom-out' : 'zoom-in'}}
+                  onClick={() => setShowFullImage(!showFullImage)}
+                />
+              )}
             </div>
             <div className="p-4 border-t">
               <Button onClick={() => {
                 navigator.clipboard.writeText(currentImageUrl);
-                toast.success("Image URL copied to clipboard");
+                toast.success("Media URL copied to clipboard");
               }}>
-                Copy Image URL
+                Copy Media URL
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {files.filter(isImageFile).length > 0 && (
+      {/* Image Carousel - Needs update for video */}
+      {(files.filter(isImageFile).length > 0 || files.filter(isVideoFile).length > 0) && (
         <div className="mt-8">
-          <h3 className="text-lg font-semibold mb-4">Image Carousel</h3>
+          <h3 className="text-lg font-semibold mb-4">Media Carousel</h3>
           <Carousel className="w-full">
             <CarouselContent>
-              {files.filter(isImageFile).map((file) => (
+              {files.filter(file => isImageFile(file) || isVideoFile(file)).map((file) => (
                 <CarouselItem key={file.name} className="md:basis-1/2 lg:basis-1/3">
                   <div className="p-1">
                     <Card>
                       <CardContent className="flex aspect-square items-center justify-center p-6">
-                        <img
-                          src={file.thumb || ""}
-                          alt={file.name}
-                          className="object-cover h-full w-full rounded"
-                          onClick={() => handleViewImage(file)}
-                          style={{cursor: 'pointer'}}
-                          onError={(e) => {
-                            e.currentTarget.src = '/placeholder.svg';
-                          }}
-                        />
+                        {isImageFile(file) ? (
+                          <img
+                            src={file.thumb || ""}
+                            alt={file.name}
+                            className="object-cover h-full w-full rounded"
+                            onClick={() => handleViewImage(file)}
+                            style={{cursor: 'pointer'}}
+                            onError={(e) => {
+                              e.currentTarget.src = '/placeholder.svg';
+                            }}
+                          />
+                        ) : isVideoFile(file) ? (
+                           <video
+                             src={file.thumb || ""} // Use thumb for poster if available
+                             controls
+                             className="object-cover h-full w-full rounded"
+                             poster={file.thumb || '/placeholder.svg'} // Use thumbnail as poster
+                             onClick={() => handleViewImage(file)} // Allow clicking to open full preview
+                             style={{cursor: 'pointer'}}
+                           >
+                             Your browser does not support the video tag.
+                           </video>
+                        ) : null}
                       </CardContent>
                     </Card>
                   </div>
