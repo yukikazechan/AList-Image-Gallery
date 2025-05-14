@@ -85,13 +85,66 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
     }
   };
 
+  // New handler for Markdown link
+  const handleCopyMarkdownLink = async (file: FileInfo) => {
+    if (!alistService) return;
+    try {
+      const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
+      const markdownLink = `![${file.name}](${fileUrl})`;
+      await navigator.clipboard.writeText(markdownLink);
+      toast.success("Markdown link copied to clipboard");
+    } catch (error: any) {
+      toast.error(`Error copying Markdown link: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  // New handler for HTML link
+  const handleCopyHtmlLink = async (file: FileInfo) => {
+    if (!alistService) return;
+    try {
+      const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
+      const htmlLink = `<img src="${fileUrl}" alt="${file.name}">`;
+      await navigator.clipboard.writeText(htmlLink);
+      toast.success("HTML link copied to clipboard");
+    } catch (error: any) {
+      toast.error(`Error copying HTML link: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  // New handler for UBB link
+  const handleCopyUbbLink = async (file: FileInfo) => {
+    if (!alistService) return;
+    try {
+      const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
+      const ubbLink = `[img]${fileUrl}[/img]`;
+      await navigator.clipboard.writeText(ubbLink);
+      toast.success("UBB link copied to clipboard");
+    } catch (error: any) {
+      toast.error(`Error copying UBB link: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  // New handler for Thumbnail link
+  const handleCopyThumbnailLink = async (file: FileInfo) => {
+    if (!file.thumb) {
+      toast.error("Thumbnail URL not available");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(file.thumb);
+      toast.success("Thumbnail link copied to clipboard");
+    } catch (error: any) {
+      toast.error(`Error copying Thumbnail link: ${error.message || 'Unknown error'}`);
+    }
+  };
+
   const handleDelete = async (file: FileInfo) => {
     if (!alistService) return;
-    
+
     if (!window.confirm(`Are you sure you want to delete ${file.name}?`)) {
       return;
     }
-    
+
     try {
       await alistService.deleteFile(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
       toast.success(`${file.name} deleted successfully`);
@@ -103,7 +156,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
 
   const navigateUp = () => {
     if (path === "/") return;
-    
+
     const newPath = path.split("/").slice(0, -1).join("/") || "/";
     onPathChange(newPath);
   };
@@ -114,9 +167,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={navigateUp}
             disabled={path === "/"}
           >
@@ -143,7 +196,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
           {files.map((file) => (
             <Card key={file.name} className="overflow-hidden">
               <CardContent className="p-0">
-                <div 
+                <div
                   className="cursor-pointer"
                   onClick={() => handleNavigate(file)}
                 >
@@ -173,31 +226,91 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                   <p className="text-xs font-medium truncate" title={file.name}>
                     {file.name}
                   </p>
-                  <div className="flex justify-between mt-2">
+                  <div className="flex flex-col mt-2 space-y-2"> {/* Outer container for two rows */}
                     {!file.is_dir && isImageFile(file) && (
                       <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCopyLink(file);
-                          }}
-                        >
-                          <Link className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(file);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {/* First row: Original, MD, HTML */}
+                        <div className="flex space-x-1"> {/* Container for first row buttons */}
+                          {/* Original Copy Link Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyLink(file); // This copies the raw URL
+                            }}
+                          >
+                            <Link className="h-4 w-4" />
+                          </Button>
+
+                          {/* Markdown Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyMarkdownLink(file);
+                            }}
+                          >
+                            MD
+                          </Button>
+                          {/* HTML Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyHtmlLink(file);
+                            }}
+                          >
+                            HTML
+                          </Button>
+                        </div>
+
+                        {/* Second row: UBB, Thumb, Delete */}
+                        <div className="flex space-x-1 justify-end"> {/* Container for second row buttons, align to end */}
+                          {/* UBB Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyUbbLink(file);
+                            }}
+                          >
+                            UBB
+                          </Button>
+                          {/* Thumbnail Button */}
+                          {file.thumb && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-2 text-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCopyThumbnailLink(file);
+                              }}
+                            >
+                              Thumb
+                            </Button>
+                          )}
+                          {/* Existing Delete Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(file);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </>
                     )}
                     {file.is_dir && (
@@ -233,9 +346,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
               </Button>
             </div>
             <div className="p-4 overflow-auto" style={{maxHeight: 'calc(90vh - 60px)'}}>
-              <img 
-                src={currentImageUrl} 
-                alt="Preview" 
+              <img
+                src={currentImageUrl}
+                alt="Preview"
                 className={`max-w-full ${showFullImage ? '' : 'max-h-[70vh]'}`}
                 style={{cursor: showFullImage ? 'zoom-out' : 'zoom-in'}}
                 onClick={() => setShowFullImage(!showFullImage)}

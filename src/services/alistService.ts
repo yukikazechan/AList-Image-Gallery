@@ -31,7 +31,7 @@ export class AlistService {
     this.client = axios.create({
       baseURL: this.baseUrl,
       headers: {
-        Authorization: `Bearer ${this.token}`
+        Authorization: this.token
       }
     });
   }
@@ -48,7 +48,7 @@ export class AlistService {
     this.client = axios.create({
       baseURL: this.baseUrl,
       headers: {
-        Authorization: `Bearer ${this.token}`
+        Authorization: this.token
       }
     });
   }
@@ -126,23 +126,42 @@ export class AlistService {
   // 上传文件
   async uploadFile(path: string, file: File): Promise<any> {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await this.client.put(`/api/fs/put`, formData, {
-        params: { path: `${path}/${file.name}` },
+      // Use the file directly as the request body for PUT
+      // Remove FormData as we are not sending multipart/form-data
+
+      // Construct the full target path
+      const fullPath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
+      const encodedFullPath = encodeURIComponent(fullPath); // URL encode the path
+
+      // Change back to PUT request to /api/fs/put
+      const response = await this.client.put(`/api/fs/put`, file, { // Send file directly as body
         headers: {
-          'Content-Type': 'multipart/form-data'
+          // Content-Type will be automatically set by the browser/Axios based on the file type
+          'File-Path': encodedFullPath, // Add File-Path header with encoded path
+          'Authorization': this.token // Ensure Authorization header is included (without Bearer)
+          // Remove As-Task header
         }
+        // Remove params
       });
-      
+
       if (response.data && response.data.code === 401) {
         throw new Error('Authentication failed - please check your token and server URL');
       }
-      
+
+      // AList /api/fs/put usually returns code 200 on success
+      if (response.data && response.data.code !== 200) {
+         throw new Error(`Upload failed: ${response.data.message || 'Unknown error from AList API'}`);
+      }
+
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading file:', error);
+      // Handle Axios errors specifically if needed, similar to testConnection
+      if (error.response) {
+         throw new Error(`Upload failed: ${error.response.data?.message || error.response.statusText || 'Server error'}`);
+      } else if (error.request) {
+         throw new Error('Upload failed: No response from server. Please check your server URL and network connection.');
+      }
       throw error;
     }
   }
