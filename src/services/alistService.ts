@@ -49,7 +49,14 @@ export class AlistService {
   async listFiles(path: string): Promise<FileInfo[]> {
     try {
       const response = await this.client.post('/api/fs/list', { path });
-      return response.data.data.content || [];
+      
+      // Check if response.data and response.data.data exist
+      if (response.data && response.data.data && response.data.data.content) {
+        return response.data.data.content;
+      } else {
+        console.log('Response structure:', JSON.stringify(response.data));
+        return []; // Return empty array if content is not available
+      }
     } catch (error) {
       console.error('Error listing files:', error);
       throw error;
@@ -80,7 +87,14 @@ export class AlistService {
   async getFileLink(path: string): Promise<string> {
     try {
       const response = await this.client.post('/api/fs/get', { path });
-      return response.data.data.raw_url || '';
+      
+      // Check if response.data and response.data.data exist
+      if (response.data && response.data.data && response.data.data.raw_url) {
+        return response.data.data.raw_url;
+      } else {
+        console.log('Response structure for file link:', JSON.stringify(response.data));
+        return ''; // Return empty string if raw_url is not available
+      }
     } catch (error) {
       console.error('Error getting file link:', error);
       throw error;
