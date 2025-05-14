@@ -21,9 +21,11 @@ export interface ListResponse {
 
 export class AlistService {
   private client: AxiosInstance;
-  private baseUrl: string = "https://alist.example.com"; // 用户需要配置实际的 AList 服务器地址
+  private baseUrl: string;
   
-  constructor(token: string) {
+  constructor(token: string, baseUrl: string = "") {
+    this.baseUrl = baseUrl || "";
+    
     this.client = axios.create({
       baseURL: this.baseUrl,
       headers: {
@@ -36,6 +38,11 @@ export class AlistService {
   setBaseUrl(url: string) {
     this.baseUrl = url;
     this.client.defaults.baseURL = url;
+  }
+
+  // 获取当前基础URL
+  getBaseUrl(): string {
+    return this.baseUrl;
   }
 
   // 获取文件列表
