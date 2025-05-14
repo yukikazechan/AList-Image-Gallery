@@ -27,18 +27,22 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [directories, setDirectories] = useState<FileInfo[]>([]);
   const [isLoadingDirs, setIsLoadingDirs] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   // Load directories in the current path
   const loadDirectories = useCallback(async () => {
     if (!alistService) return;
     
     setIsLoadingDirs(true);
+    setConnectionError(null);
+    
     try {
       const filesList = await alistService.listFiles(currentPath);
       // Filter to only show directories
       const dirs = filesList.filter(file => file.is_dir);
       setDirectories(dirs);
     } catch (error: any) {
+      setConnectionError(error.message || 'Unknown error loading directories');
       toast.error(`Error loading directories: ${error.message || 'Unknown error'}`);
     } finally {
       setIsLoadingDirs(false);
@@ -90,12 +94,13 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       setUploadedImageUrl(fileLink);
       
       onUploadSuccess();
+      loadDirectories(); // Refresh directory list
     } catch (error: any) {
       toast.error(`Upload failed: ${error.message || 'Unknown error'}`);
     } finally {
       setIsUploading(false);
     }
-  }, [alistService, files, currentPath, onUploadSuccess]);
+  }, [alistService, files, currentPath, onUploadSuccess, loadDirectories]);
 
   const copyToClipboard = useCallback(() => {
     if (uploadedImageUrl) {
@@ -143,6 +148,16 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
+          {connectionError && (
+            <div className="bg-red-50 border border-red-300 text-red-700 px-4 py-3 rounded relative mb-4">
+              <strong className="font-bold">Connection Error: </strong>
+              <span className="block sm:inline">{connectionError}</span>
+              <p className="mt-2 text-sm">
+                Please check your AList connection settings in the Settings tab
+              </p>
+            </div>
+          )}
+
           {/* Path navigation */}
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
@@ -162,12 +177,14 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
               {isLoadingDirs ? (
                 <div className="flex items-center space-x-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Loading...</span>
+                  <span>Loading directories...</span>
                 </div>
               ) : (
                 <>
                   {directories.length === 0 ? (
-                    <p className="text-sm text-gray-500">No subfolders in this directory</p>
+                    <p className="text-sm text-gray-500">
+                      {connectionError ? "Could not load directories" : "No subfolders in this directory"}
+                    </p>
                   ) : (
                     <Select onValueChange={navigateToFolder}>
                       <SelectTrigger className="w-[250px]">
@@ -185,7 +202,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
                       </SelectContent>
                     </Select>
                   )}
-                  <Button variant="outline" size="sm" onClick={handleCreateFolder}>
+                  <Button variant="outline" size="sm" onClick={handleCreateFolder} disabled={!!connectionError}>
                     Create Folder
                   </Button>
                   <Button variant="outline" size="sm" onClick={loadDirectories}>
@@ -202,6 +219,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
               accept="image/*"
               onChange={handleFileChange}
               className="mb-4"
+              disabled={!!connectionError}
             />
             
             {imagePreviewUrl && (
@@ -216,11 +234,14 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
             
             <Button
               onClick={handleUpload}
-              disabled={!files || isUploading}
+              disabled={!files || isUploading || !!connectionError}
               className="mt-4"
             >
               {isUploading ? (
-                "Uploading..."
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Uploading...
+                </>
               ) : (
                 <>
                   <Upload className="mr-2 h-4 w-4" />

@@ -16,29 +16,50 @@ const Index = () => {
   });
   const [path, setPath] = useState<string>("/");
   const [alistService, setAlistService] = useState<AlistService | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("upload");
+  const [connectionVerified, setConnectionVerified] = useState<boolean>(false);
 
   // Initialize AlistService when token changes
   useEffect(() => {
     if (token && serverUrl) {
       localStorage.setItem("alist_token", token);
       localStorage.setItem("alist_server_url", serverUrl);
+      
       const service = new AlistService(token, serverUrl);
       setAlistService(service);
+      
+      // Test connection
+      service.testConnection()
+        .then(isValid => {
+          setConnectionVerified(isValid);
+          if (!isValid) {
+            toast.error("Could not connect to AList with the provided credentials");
+          }
+        })
+        .catch(error => {
+          console.error("Connection test error:", error);
+          setConnectionVerified(false);
+        });
     } else {
       if (!token) localStorage.removeItem("alist_token");
       if (!serverUrl) localStorage.removeItem("alist_server_url");
       setAlistService(null);
+      setConnectionVerified(false);
     }
   }, [token, serverUrl]);
 
   const handleConnectionSubmit = (newToken: string, newServerUrl: string) => {
     setToken(newToken);
     setServerUrl(newServerUrl);
-    toast.success("Connection settings saved successfully!");
+    // Toast success message will be shown after connection is tested
   };
 
   const handleUploadSuccess = () => {
     toast.success("Image uploaded successfully!");
+  };
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
   };
 
   return (
@@ -49,16 +70,17 @@ const Index = () => {
           <p className="text-gray-600">Upload and manage your images with AList</p>
         </header>
 
-        {(!token || !serverUrl) && (
+        {(!token || !serverUrl || !connectionVerified) && (
           <TokenInput 
             initialToken={token} 
             initialServerUrl={serverUrl}
             onSubmit={handleConnectionSubmit} 
+            isUpdate={!!(token && serverUrl && !connectionVerified)}
           />
         )}
 
-        {token && serverUrl && (
-          <Tabs defaultValue="upload" className="w-full">
+        {token && serverUrl && connectionVerified && (
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsList className="grid w-full grid-cols-3 mb-8">
               <TabsTrigger value="upload">Upload Images</TabsTrigger>
               <TabsTrigger value="gallery">Gallery</TabsTrigger>

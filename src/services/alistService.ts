@@ -45,19 +45,33 @@ export class AlistService {
     return this.baseUrl;
   }
 
+  // Test connection to verify credentials
+  async testConnection(): Promise<boolean> {
+    try {
+      const response = await this.client.post('/api/fs/list', { path: '/' });
+      return response.data && response.data.code === 200;
+    } catch (error: any) {
+      console.error('Connection test failed:', error);
+      return false;
+    }
+  }
+
   // 获取文件列表
   async listFiles(path: string): Promise<FileInfo[]> {
     try {
       const response = await this.client.post('/api/fs/list', { path });
       
-      // Check if response.data and response.data.data exist
-      if (response.data && response.data.data && response.data.data.content) {
+      // Check if request was successful
+      if (response.data && response.data.code === 200 && response.data.data && response.data.data.content) {
         return response.data.data.content;
       } else {
         console.log('Response structure:', JSON.stringify(response.data));
+        if (response.data && response.data.code === 401) {
+          throw new Error('Authentication failed - please check your token and server URL');
+        }
         return []; // Return empty array if content is not available
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error listing files:', error);
       throw error;
     }
@@ -76,6 +90,10 @@ export class AlistService {
         }
       });
       
+      if (response.data && response.data.code === 401) {
+        throw new Error('Authentication failed - please check your token and server URL');
+      }
+      
       return response.data;
     } catch (error) {
       console.error('Error uploading file:', error);
@@ -88,11 +106,14 @@ export class AlistService {
     try {
       const response = await this.client.post('/api/fs/get', { path });
       
-      // Check if response.data and response.data.data exist
-      if (response.data && response.data.data && response.data.data.raw_url) {
+      // Check if response is successful
+      if (response.data && response.data.code === 200 && response.data.data && response.data.data.raw_url) {
         return response.data.data.raw_url;
       } else {
         console.log('Response structure for file link:', JSON.stringify(response.data));
+        if (response.data && response.data.code === 401) {
+          throw new Error('Authentication failed - please check your token and server URL');
+        }
         return ''; // Return empty string if raw_url is not available
       }
     } catch (error) {
@@ -107,6 +128,11 @@ export class AlistService {
       const response = await this.client.post('/api/fs/mkdir', {
         path: `${path}/${name}`
       });
+      
+      if (response.data && response.data.code === 401) {
+        throw new Error('Authentication failed - please check your token and server URL');
+      }
+      
       return response.data;
     } catch (error) {
       console.error('Error creating folder:', error);
@@ -118,6 +144,11 @@ export class AlistService {
   async deleteFile(path: string): Promise<any> {
     try {
       const response = await this.client.post('/api/fs/remove', { path });
+      
+      if (response.data && response.data.code === 401) {
+        throw new Error('Authentication failed - please check your token and server URL');
+      }
+      
       return response.data;
     } catch (error) {
       console.error('Error deleting file:', error);
