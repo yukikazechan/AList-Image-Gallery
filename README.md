@@ -4,7 +4,7 @@
 
 ## 快速部署
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=YOUR_REPOSITORY_URL_HERE)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yukikazechan/AList-Image-Gallery)
 
 请将 `YOUR_REPOSITORY_URL_HERE` 替换为您的项目仓库地址。
 
@@ -18,7 +18,7 @@
 
 1.  克隆仓库:
     ```bash
-    git clone YOUR_REPOSITORY_URL_HERE
+    git clone https://github.com/yukikazechan/AList-Image-Gallery
     cd quirky-test-generator-thing
     ```
     请将 `YOUR_REPOSITORY_URL_HERE` 替换为您的项目仓库地址。
