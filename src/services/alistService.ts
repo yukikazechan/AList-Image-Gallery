@@ -1,4 +1,3 @@
-
 import axios, { AxiosInstance } from "axios";
 
 export interface FileInfo {
@@ -49,10 +48,33 @@ export class AlistService {
   async testConnection(): Promise<boolean> {
     try {
       const response = await this.client.post('/api/fs/list', { path: '/' });
+      console.log('Connection test response:', response.data);
+      
+      if (response.data && response.data.code === 401) {
+        console.error('Authentication failed:', response.data.message);
+        throw new Error(`Authentication failed: ${response.data.message || 'Invalid token'}`);
+      }
+      
       return response.data && response.data.code === 200;
     } catch (error: any) {
       console.error('Connection test failed:', error);
-      return false;
+      
+      // Handle Axios errors
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error('Server error:', error.response.data);
+        if (error.response.status === 401) {
+          throw new Error(`Authentication failed: ${error.response.data?.message || 'Invalid token'}`);
+        }
+        throw new Error(`Server error: ${error.response.data?.message || error.response.statusText || 'Unknown server error'}`);
+      } else if (error.request) {
+        // The request was made but no response was received
+        throw new Error('No response from server. Please check your server URL and network connection.');
+      }
+      
+      // Re-throw the original error if it's not an Axios error
+      throw error;
     }
   }
 
@@ -68,6 +90,9 @@ export class AlistService {
         console.log('Response structure:', JSON.stringify(response.data));
         if (response.data && response.data.code === 401) {
           throw new Error('Authentication failed - please check your token and server URL');
+        }
+        if (response.data && response.data.code !== 200) {
+          throw new Error(`Server error: ${response.data.message || 'Unknown error'}`);
         }
         return []; // Return empty array if content is not available
       }

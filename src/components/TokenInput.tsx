@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { AlistService } from "@/services/alistService";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 interface TokenInputProps {
   initialToken?: string;
@@ -24,11 +25,15 @@ const TokenInput: React.FC<TokenInputProps> = ({
   const [token, setToken] = useState<string>(initialToken);
   const [serverUrl, setServerUrl] = useState<string>(initialServerUrl);
   const [isValidating, setIsValidating] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
   const validateAndSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    setError(null);
+    
     if (!token.trim() || !serverUrl.trim()) {
+      setError("Please enter both server URL and token");
       toast.error("Please enter both server URL and token");
       return;
     }
@@ -38,20 +43,29 @@ const TokenInput: React.FC<TokenInputProps> = ({
       ? serverUrl.trim().slice(0, -1) 
       : serverUrl.trim();
     
+    // Add https:// if not present
+    const urlWithProtocol = normalizedUrl.startsWith('http') 
+      ? normalizedUrl 
+      : `https://${normalizedUrl}`;
+    
     setIsValidating(true);
     try {
       // Test the connection before saving
-      const testService = new AlistService(token.trim(), normalizedUrl);
+      const testService = new AlistService(token.trim(), urlWithProtocol);
       const isValid = await testService.testConnection();
       
       if (isValid) {
-        onSubmit(token.trim(), normalizedUrl);
+        onSubmit(token.trim(), urlWithProtocol);
         toast.success("Connection successful!");
       } else {
-        toast.error("Could not connect to AList. Please check your token and server URL.");
+        const errorMsg = "Could not connect to AList. Please check your token and server URL.";
+        setError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error: any) {
-      toast.error(`Connection failed: ${error.message || 'Unknown error'}`);
+      const errorMsg = `Connection failed: ${error.message || 'Unknown error'}`;
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setIsValidating(false);
     }
@@ -69,6 +83,14 @@ const TokenInput: React.FC<TokenInputProps> = ({
       </CardHeader>
       <form onSubmit={validateAndSubmit}>
         <CardContent>
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Connection Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
           <div className="grid w-full items-center gap-4">
             <div className="flex flex-col space-y-1.5">
               <Label htmlFor="serverUrl">AList Server URL</Label>
@@ -80,7 +102,7 @@ const TokenInput: React.FC<TokenInputProps> = ({
                 required
                 disabled={isValidating}
               />
-              <p className="text-xs text-gray-500">Example: https://your-alist-server.com (without trailing slash)</p>
+              <p className="text-xs text-gray-500">Example: your-alist-server.com (https:// will be added automatically if missing)</p>
             </div>
             <div className="flex flex-col space-y-1.5">
               <Label htmlFor="token">AList Token</Label>
