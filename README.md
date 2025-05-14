@@ -1,58 +1,37 @@
-# Welcome to your Lovable project
+# AList Image Gallery
 
-## Project info
+一个基于 AList 的图片画廊应用。
 
-**URL**: https://lovable.dev/projects/e0cef975-1578-4316-a9f1-3a8a6efb2150
+## 快速部署
 
-## How can I edit this code?
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=YOUR_REPOSITORY_URL_HERE)
 
-There are several ways of editing your application.
+请将 `YOUR_REPOSITORY_URL_HERE` 替换为您的项目仓库地址。
 
-**Use Lovable**
+## 如何使用
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/e0cef975-1578-4316-a9f1-3a8a6efb2150) and start prompting.
+1.  **部署应用**: 您可以通过上面的 Vercel 按钮快速部署，或者按照下面的本地开发步骤自行部署。
+2.  **配置 AList 地址**: 部署完成后，在应用界面输入您的 AList 地址。
+3.  **浏览图片**: 输入 AList 地址后，即可浏览 AList 中配置的存储中的图片。
 
-Changes made via Lovable will be committed automatically to this repo.
+## 本地开发
 
-**Use your preferred IDE**
+1.  克隆仓库:
+    ```bash
+    git clone YOUR_REPOSITORY_URL_HERE
+    cd quirky-test-generator-thing
+    ```
+    请将 `YOUR_REPOSITORY_URL_HERE` 替换为您的项目仓库地址。
+2.  安装依赖:
+    ```bash
+    npm install
+    ```
+3.  运行开发服务器:
+    ```bash
+    npm run dev
+    ```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
+## 使用的技术栈
 
 - Vite
 - TypeScript
@@ -60,14 +39,6 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
-## How can I deploy this project?
+## 版权信息
 
-Simply open [Lovable](https://lovable.dev/projects/e0cef975-1578-4316-a9f1-3a8a6efb2150) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+AList Image Gallery © 2025 by arikacips

@@ -3,22 +3,23 @@ import React, { useState, useEffect } from "react";
 import { AlistService, FileInfo } from "@/services/alistService";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { 
-  ChevronLeft, 
-  FolderOpen, 
-  Image as ImageIcon, 
-  Link, 
+import {
+  ChevronLeft,
+  FolderOpen,
+  Image as ImageIcon,
+  Link,
   Trash2,
   Loader2
 } from "lucide-react";
 import { toast } from "sonner";
-import { 
+import {
   Carousel,
   CarouselContent,
   CarouselItem,
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import ReactPlayer from 'react-player'; // Import ReactPlayer
 
 interface GalleryProps {
   alistService: AlistService | null;
@@ -35,13 +36,13 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
 
   const loadFiles = async () => {
     if (!alistService) return;
-    
+
     setLoading(true);
     try {
       const filesList = await alistService.listFiles(path);
-      // Filter to only show directories and images
+      // Filter to only show directories and images, exclude videos
       const filteredFiles = filesList.filter(file =>
-        file.is_dir || file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif|mp4|webm|mov|avi|mkv)$/i)
+        file.is_dir || file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif)$/i)
       );
       setFiles(filteredFiles);
     } catch (error: any) {
@@ -65,7 +66,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
 
   const handleViewImage = async (file: FileInfo) => {
     if (!alistService) return;
-    
+
     try {
       const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
       setCurrentImageUrl(fileUrl);
@@ -77,7 +78,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
 
   const handleCopyLink = async (file: FileInfo) => {
     if (!alistService) return;
-    
+
     try {
       const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
       await navigator.clipboard.writeText(fileUrl);
@@ -165,8 +166,6 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
 
   const isImageFile = (file: FileInfo) => !file.is_dir && file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif)$/i);
 
-  const isVideoFile = (file: FileInfo) => !file.is_dir && file.name.match(/\.(mp4|webm|mov|avi|mkv)$/i);
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -220,17 +219,6 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                         }}
                       />
                     </div>
-                  ) : isVideoFile(file) ? (
-                    <div className="h-32 bg-black flex items-center justify-center overflow-hidden">
-                       <video
-                         src={file.thumb || ""} // Use thumb for poster if available, or consider a default video thumbnail
-                         controls // Add controls for playback
-                         className="object-cover h-full w-full"
-                         poster={file.thumb || '/placeholder.svg'} // Use thumbnail as poster
-                       >
-                         Your browser does not support the video tag.
-                       </video>
-                    </div>
                   ) : (
                     <div className="h-32 flex items-center justify-center bg-gray-100">
                       <ImageIcon className="h-12 w-12 text-gray-400" />
@@ -242,10 +230,10 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                     {file.name}
                   </p>
                   <div className="flex flex-col mt-2 space-y-2"> {/* Outer container for two rows */}
-                    {!file.is_dir && (isImageFile(file) || isVideoFile(file)) && (
+                    {!file.is_dir && isImageFile(file) && (
                       <>
                         {/* First row: Original, MD, HTML */}
-                        <div className="flex space-x-1"> {/* Container for first row buttons */}
+                        <div className="flex justify-between items-center"> {/* Container for first row buttons */}
                           {/* Original Copy Link Button */}
                           <Button
                             variant="outline"
@@ -259,52 +247,6 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                             <Link className="h-4 w-4" />
                           </Button>
 
-                          {/* Markdown Button */}
-                          {isImageFile(file) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 px-2 text-xs"
-                              onClick={(e) => {
-                              e.stopPropagation();
-                              handleCopyMarkdownLink(file);
-                              }}
-                            >
-                              MD
-                            </Button>
-                          )}
-                          {/* HTML Button */}
-                           {isImageFile(file) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 px-2 text-xs"
-                              onClick={(e) => {
-                              e.stopPropagation();
-                              handleCopyHtmlLink(file);
-                              }}
-                            >
-                              HTML
-                            </Button>
-                           )}
-                        </div>
-
-                        {/* Second row: UBB, Thumb, Delete */}
-                        <div className="flex space-x-1 justify-end"> {/* Container for second row buttons, align to end */}
-                          {/* UBB Button */}
-                          {isImageFile(file) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 px-2 text-xs"
-                              onClick={(e) => {
-                              e.stopPropagation();
-                              handleCopyUbbLink(file);
-                              }}
-                            >
-                              UBB
-                            </Button>
-                          )}
                           {/* Thumbnail Button */}
                           {file.thumb && (
                             <Button
@@ -313,7 +255,11 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                               className="h-8 px-2 text-xs"
                               onClick={(e) => {
                               e.stopPropagation();
-                              handleCopyThumbnailLink(file);
+                              if (file.thumb) {
+                                window.open(file.thumb, '_blank');
+                              } else {
+                                toast.error("Thumbnail URL not available");
+                              }
                               }}
                             >
                               Thumb
@@ -332,120 +278,137 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
-                      </>
-                    )}
-                    {file.is_dir && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        onClick={(e) => {
-                        e.stopPropagation();
-                        handleNavigate(file);
-                        }}
-                      >
-                        <FolderOpen className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
 
-      {/* Full screen preview - Needs update for video */}
-      {/* Full screen preview - Updated for video */}
-      {currentFile && currentImageUrl && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4"
-             onClick={() => setCurrentFile(null)}> {/* Close on clicking outside */}
-          <div className="relative bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-hidden"
-               onClick={(e) => e.stopPropagation()}> {/* Prevent closing when clicking inside */}
-            <div className="p-4 flex justify-between items-center border-b">
-              <h3 className="font-medium">{isVideoFile(currentFile) ? 'Video Preview' : 'Image Preview'}</h3>
-              <Button variant="ghost" size="sm" onClick={() => setCurrentFile(null)}>
-                Close
-              </Button>
-            </div>
-            <div className="p-4 overflow-auto" style={{maxHeight: 'calc(90vh - 60px)'}}>
-              {isVideoFile(currentFile) ? (
-                 <video
-                   src={currentImageUrl}
-                   controls
-                   className="max-w-full max-h-[70vh]"
-                 >
-                   Your browser does not support the video tag.
-                 </video>
-              ) : (
-                <img
-                  src={currentImageUrl}
-                  alt="Preview"
-                  className={`max-w-full ${showFullImage ? '' : 'max-h-[70vh]'}`}
-                  style={{cursor: showFullImage ? 'zoom-out' : 'zoom-in'}}
-                  onClick={() => setShowFullImage(!showFullImage)}
-                />
-              )}
-            </div>
-            <div className="p-4 border-t">
-              <Button onClick={() => {
-                navigator.clipboard.writeText(currentImageUrl);
-                toast.success("Media URL copied to clipboard");
-              }}>
-                Copy Media URL
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Image Carousel - Needs update for video */}
-      {(files.filter(isImageFile).length > 0 || files.filter(isVideoFile).length > 0) && (
-        <div className="mt-8">
-          <h3 className="text-lg font-semibold mb-4">Media Carousel</h3>
-          <Carousel className="w-full">
-            <CarouselContent>
-              {files.filter(file => isImageFile(file) || isVideoFile(file)).map((file) => (
-                <CarouselItem key={file.name} className="md:basis-1/2 lg:basis-1/3">
-                  <div className="p-1">
-                    <Card>
-                      <CardContent className="flex aspect-square items-center justify-center p-6">
-                        {isImageFile(file) ? (
-                          <img
-                            src={file.thumb || ""}
-                            alt={file.name}
-                            className="object-cover h-full w-full rounded"
-                            onClick={() => handleViewImage(file)}
-                            style={{cursor: 'pointer'}}
-                            onError={(e) => {
-                              e.currentTarget.src = '/placeholder.svg';
+                         {/* Second row: UBB, Thumb, Delete */}
+                        <div className="flex space-x-1 justify-center"> {/* Container for second row buttons */}
+                          {/* Markdown Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2 text-xs"
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyMarkdownLink(file);
                             }}
-                          />
-                        ) : isVideoFile(file) ? (
-                           <video
-                             src={file.thumb || ""} // Use thumb for poster if available
-                             controls
-                             className="object-cover h-full w-full rounded"
-                             poster={file.thumb || '/placeholder.svg'} // Use thumbnail as poster
-                             onClick={() => handleViewImage(file)} // Allow clicking to open full preview
-                             style={{cursor: 'pointer'}}
-                           >
-                             Your browser does not support the video tag.
-                           </video>
-                        ) : null}
-                      </CardContent>
-                    </Card>
-                  </div>
-                </CarouselItem>
-              ))}
-            </CarouselContent>
-            <CarouselPrevious />
-            <CarouselNext />
-          </Carousel>
-        </div>
-      )}
-    </div>
-  );
-};
+                          >
+                            MD
+                          </Button>
+                          {/* HTML Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2 text-xs"
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyHtmlLink(file);
+                            }}
+                          >
+                            HTML
+                          </Button>
+                          {/* UBB Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2 text-xs"
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyUbbLink(file);
+                            }}
+                          >
+                            UBB
+                          </Button>
+                        </div>
+                       </>
+                     )}
+                     {file.is_dir && (
+                       <Button
+                         variant="outline"
+                         size="sm"
+                         className="h-8 w-8 p-0"
+                         onClick={(e) => {
+                         e.stopPropagation();
+                         handleNavigate(file);
+                         }}
+                       >
+                         <FolderOpen className="h-4 w-4" />
+                       </Button>
+                     )}
+                   </div>
+                 </div>
+               </CardContent>
+             </Card>
+           ))}
+         </div>
+       )}
+
+       {/* Full screen preview - Needs update for video */}
+       {/* Full screen preview - Updated for video */}
+       {currentFile && currentImageUrl && (
+         <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4"
+              onClick={() => setCurrentFile(null)}> {/* Close on clicking outside */}
+           <div className="relative bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-hidden"
+                onClick={(e) => e.stopPropagation()}> {/* Prevent closing when clicking inside */}
+             <div className="p-4 flex justify-between items-center border-b">
+               <h3 className="font-medium">Image Preview</h3>
+               <Button variant="ghost" size="sm" onClick={() => setCurrentFile(null)}>
+                 Close
+               </Button>
+             </div>
+             <div className="p-4 overflow-auto" style={{maxHeight: 'calc(90vh - 60px)'}}>
+               <img
+                 src={currentImageUrl}
+                 alt="Preview"
+                 className={showFullImage ? '' : 'max-w-full max-h-[70vh]'}
+                 style={{cursor: showFullImage ? 'zoom-out' : 'zoom-in'}}
+                 onClick={() => setShowFullImage(!showFullImage)}
+               />
+             </div>
+             <div className="p-4 border-t">
+               <Button onClick={() => {
+                 navigator.clipboard.writeText(currentImageUrl);
+                 toast.success("Media URL copied to clipboard");
+               }}>
+                 Copy Media URL
+               </Button>
+             </div>
+           </div>
+         </div>
+       )}
+
+       {/* Image Carousel */}
+       {files.filter(isImageFile).length > 0 && (
+         <div className="mt-8">
+           <h3 className="text-lg font-semibold mb-4">Image Carousel</h3>
+           <Carousel className="w-full">
+             <CarouselContent>
+               {files.filter(isImageFile).map((file) => (
+                 <CarouselItem key={file.name} className="md:basis-1/2 lg:basis-1/3">
+                   <div className="p-1">
+                     <Card>
+                       <CardContent className="flex aspect-square items-center justify-center p-6">
+                         <img
+                           src={file.thumb || ""}
+                           alt={file.name}
+                           className="object-cover h-full w-full rounded"
+                           onClick={() => handleViewImage(file)}
+                           style={{cursor: 'pointer'}}
+                           onError={(e) => {
+                             e.currentTarget.src = '/placeholder.svg';
+                           }}
+                         />
+                       </CardContent>
+                     </Card>
+                   </div>
+                 </CarouselItem>
+               ))}
+             </CarouselContent>
+             <CarouselPrevious />
+             <CarouselNext />
+           </Carousel>
+         </div>
+       )}
+     </div>
+   );
+ };
 
 export default Gallery;

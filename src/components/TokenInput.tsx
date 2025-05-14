@@ -134,7 +134,7 @@ const TokenInput: React.FC<TokenInputProps> = ({
                 disabled={isValidating}
               />
               <p className="text-xs text-gray-500">
-                Get your token from AList admin dashboard: Settings → Login → Get Token
+                Get your token from AList admin dashboard: Settings → Other → Token
               </p>
             </div>
           </div>

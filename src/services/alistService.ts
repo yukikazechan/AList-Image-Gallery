@@ -173,7 +173,14 @@ export class AlistService {
       
       // Check if response is successful
       if (response.data && response.data.code === 200 && response.data.data && response.data.data.raw_url) {
-        return response.data.data.raw_url;
+        let rawUrl = response.data.data.raw_url;
+        // Adjust the protocol of the URL to match the protocol of the current web app to avoid mixed content issues
+        if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+          rawUrl = rawUrl.replace(/^http:/, 'https:');
+        } else if (typeof window !== 'undefined' && window.location.protocol === 'http:') {
+          rawUrl = rawUrl.replace(/^https:/, 'http:');
+        }
+        return rawUrl;
       } else {
         console.log('Response structure for file link:', JSON.stringify(response.data));
         if (response.data && response.data.code === 401) {
@@ -208,12 +215,31 @@ export class AlistService {
   // 删除文件或文件夹
   async deleteFile(path: string): Promise<any> {
     try {
-      const response = await this.client.post('/api/fs/remove', { path });
+      // Split the path into directory and file name
+      const lastSlashIndex = path.lastIndexOf('/');
+      let dir = '/';
+      let name = path;
+
+      if (lastSlashIndex !== -1) {
+        dir = path.substring(0, lastSlashIndex) || '/';
+        name = path.substring(lastSlashIndex + 1);
+      }
+
+      // AList API expects 'names' as an array and 'dir'
+      const response = await this.client.post('/api/fs/remove', {
+        names: [name],
+        dir: dir
+      });
       
       if (response.data && response.data.code === 401) {
         throw new Error('Authentication failed - please check your token and server URL');
       }
-      
+
+      // Check if the AList API operation was successful
+      if (response.data && response.data.code !== 200) {
+        throw new Error(`Deletion failed: ${response.data.message || 'Unknown error from AList API'}`);
+      }
+
       return response.data;
     } catch (error) {
       console.error('Error deleting file:', error);

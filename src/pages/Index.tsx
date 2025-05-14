@@ -116,7 +116,7 @@ const Index = () => {
         )}
 
         <footer className="mt-12 text-center text-gray-500 text-sm">
-          <p>AList Image Gallery &copy; {new Date().getFullYear()}</p>
+          <p>AList Image Gallery &copy; 2025 by arikacips</p>
         </footer>
       </div>
     </div>
