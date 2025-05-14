@@ -6,8 +6,10 @@ import TokenInput from "@/components/TokenInput";
 import ImageUploader from "@/components/ImageUploader";
 import Gallery from "@/components/Gallery";
 import { AlistService } from "@/services/alistService";
+import { useTranslation } from 'react-i18next'; // Import useTranslation
 
 const Index = () => {
+  const { t } = useTranslation(); // Initialize useTranslation
   const [token, setToken] = useState<string>(() => {
     return localStorage.getItem("alist_token") || "";
   });
@@ -33,7 +35,7 @@ const Index = () => {
         .then(isValid => {
           setConnectionVerified(isValid);
           if (!isValid) {
-            toast.error("Could not connect to AList with the provided credentials");
+            toast.error(t("connectionError")); // Use translation key
           }
         })
         .catch(error => {
@@ -46,7 +48,7 @@ const Index = () => {
       setAlistService(null);
       setConnectionVerified(false);
     }
-  }, [token, serverUrl]);
+  }, [token, serverUrl, t]); // Add t to dependency array
 
   const handleConnectionSubmit = (newToken: string, newServerUrl: string) => {
     setToken(newToken);
@@ -55,7 +57,7 @@ const Index = () => {
   };
 
   const handleUploadSuccess = () => {
-    toast.success("Image uploaded successfully!");
+    toast.success(t("uploadSuccess")); // Use translation key
   };
 
   const handleTabChange = (value: string) => {
@@ -66,15 +68,15 @@ const Index = () => {
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="container max-w-4xl mx-auto">
         <header className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-purple-700 mb-2">AList Image Gallery</h1>
-          <p className="text-gray-600">Upload and manage your images with AList</p>
+          <h1 className="text-3xl font-bold text-purple-700 mb-2">{t("appName")}</h1> {/* Use translation key */}
+          <p className="text-gray-600">{t("appDescription")}</p> {/* Use translation key */}
         </header>
 
         {(!token || !serverUrl || !connectionVerified) && (
-          <TokenInput 
-            initialToken={token} 
+          <TokenInput
+            initialToken={token}
             initialServerUrl={serverUrl}
-            onSubmit={handleConnectionSubmit} 
+            onSubmit={handleConnectionSubmit}
             isUpdate={!!(token && serverUrl && !connectionVerified)}
           />
         )}
@@ -82,9 +84,9 @@ const Index = () => {
         {token && serverUrl && connectionVerified && (
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsList className="grid w-full grid-cols-3 mb-8">
-              <TabsTrigger value="upload">Upload Images</TabsTrigger>
-              <TabsTrigger value="gallery">Gallery</TabsTrigger>
-              <TabsTrigger value="settings">Settings</TabsTrigger>
+              <TabsTrigger value="upload">{t("uploadTab")}</TabsTrigger> {/* Use translation key */}
+              <TabsTrigger value="gallery">{t("galleryTab")}</TabsTrigger> {/* Use translation key */}
+              <TabsTrigger value="settings">{t("settingsTab")}</TabsTrigger> {/* Use translation key */}
             </TabsList>
             
             <TabsContent value="upload">
@@ -105,11 +107,11 @@ const Index = () => {
             </TabsContent>
             
             <TabsContent value="settings">
-              <TokenInput 
-                initialToken={token} 
+              <TokenInput
+                initialToken={token}
                 initialServerUrl={serverUrl}
-                onSubmit={handleConnectionSubmit} 
-                isUpdate={true} 
+                onSubmit={handleConnectionSubmit}
+                isUpdate={true}
               />
             </TabsContent>
           </Tabs>

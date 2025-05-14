@@ -1,41 +1,41 @@
 # AList Image Gallery
 
-一个基于 AList 的图片画廊应用。
+A web application based on AList for image hosting.
 
-## 快速部署
+## Quick Deployment
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yukikazechan/AList-Image-Gallery)
 
-## 如何使用
+## How to Use
 
-1.  **部署应用**: 您可以通过上面的 Vercel 按钮快速部署，或者按照下面的本地开发步骤自行部署。
-2.  **配置 AList 地址**: 部署完成后，在应用界面输入您的 AList 地址。
-3.  **浏览图片**: 输入 AList 地址后，即可浏览 AList 中配置的存储中的图片。
+1.  **Deploy the Application**: You can quickly deploy using the Vercel button above, or deploy it yourself by following the local development steps below.
+2.  **Configure AList Address**: After deployment, enter your AList address and token in the application interface.
+3.  **Browse Images**: After completing the configuration, you can browse images in the storage configured in AList, and quickly copy the MARKDOWN, HTML, or UBB links of the images for use.
 
-## 本地开发
+## Local Development
 
-1.  克隆仓库:
+1.  Clone the repository:
     ```bash
     git clone https://github.com/yukikazechan/AList-Image-Gallery
-    cd quirky-test-generator-thing
+    cd AList-Image-Gallery
     ```
-2.  安装依赖:
+2.  Install dependencies:
     ```bash
     npm install
     ```
-3.  运行开发服务器:
+3.  Run the development server:
     ```bash
     npm run dev
     ```
 
-## 使用的技术栈
+## Language Switching
+
+The application supports English and Chinese. You can switch the language using the language switcher in the application interface.
+
+## Technologies Used
 
 - Vite
 - TypeScript
 - React
 - shadcn-ui
 - Tailwind CSS
-
-## 版权信息
-
-AList Image Gallery © 2025 by arikacips

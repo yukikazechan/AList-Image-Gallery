@@ -20,6 +20,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import ReactPlayer from 'react-player'; // Import ReactPlayer
+import { useTranslation } from 'react-i18next'; // Import useTranslation
 
 interface GalleryProps {
   alistService: AlistService | null;
@@ -28,6 +29,7 @@ interface GalleryProps {
 }
 
 const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) => {
+  const { t } = useTranslation(); // Initialize useTranslation
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
@@ -46,7 +48,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
       );
       setFiles(filteredFiles);
     } catch (error: any) {
-      toast.error(`Error loading files: ${error.message || 'Unknown error'}`);
+      toast.error(`${t('galleryErrorLoadingFiles')} ${error.message || t('galleryUnknownError')}`); // Use translation key
     } finally {
       setLoading(false);
     }
@@ -54,7 +56,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
 
   useEffect(() => {
     loadFiles();
-  }, [alistService, path]);
+  }, [alistService, path, t]); // Add t to dependency array
 
   const handleNavigate = (file: FileInfo) => {
     if (file.is_dir) {
@@ -72,7 +74,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
       setCurrentImageUrl(fileUrl);
       setCurrentFile(file); // Save the current file info
     } catch (error: any) {
-      toast.error(`Error getting image link: ${error.message || 'Unknown error'}`);
+      toast.error(`${t('galleryErrorGettingImageLink')} ${error.message || t('galleryUnknownError')}`); // Use translation key
     }
   };
 
@@ -82,9 +84,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
     try {
       const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
       await navigator.clipboard.writeText(fileUrl);
-      toast.success("Image link copied to clipboard");
+      toast.success(t('galleryImageLinkCopied')); // Use translation key
     } catch (error: any) {
-      toast.error(`Error copying link: ${error.message || 'Unknown error'}`);
+      toast.error(`${t('galleryErrorCopyingLink')} ${error.message || t('galleryUnknownError')}`); // Use translation key
     }
   };
 
@@ -95,9 +97,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
       const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
       const markdownLink = `![${file.name}](${fileUrl})`;
       await navigator.clipboard.writeText(markdownLink);
-      toast.success("Markdown link copied to clipboard");
+      toast.success(t('galleryMarkdownLinkCopied')); // Use translation key
     } catch (error: any) {
-      toast.error(`Error copying Markdown link: ${error.message || 'Unknown error'}`);
+      toast.error(`${t('galleryErrorCopyingMarkdownLink')} ${error.message || t('galleryUnknownError')}`); // Use translation key
     }
   };
 
@@ -108,9 +110,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
       const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
       const htmlLink = `<img src="${fileUrl}" alt="${file.name}">`;
       await navigator.clipboard.writeText(htmlLink);
-      toast.success("HTML link copied to clipboard");
+      toast.success(t('galleryHtmlLinkCopied')); // Use translation key
     } catch (error: any) {
-      toast.error(`Error copying HTML link: ${error.message || 'Unknown error'}`);
+      toast.error(`${t('galleryErrorCopyingHtmlLink')} ${error.message || t('galleryUnknownError')}`); // Use translation key
     }
   };
 
@@ -121,39 +123,39 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
       const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
       const ubbLink = `[img]${fileUrl}[/img]`;
       await navigator.clipboard.writeText(ubbLink);
-      toast.success("UBB link copied to clipboard");
+      toast.success(t('galleryUbbLinkCopied')); // Use translation key
     } catch (error: any) {
-      toast.error(`Error copying UBB link: ${error.message || 'Unknown error'}`);
+      toast.error(`${t('galleryErrorCopyingUbbLink')} ${error.message || t('galleryUnknownError')}`); // Use translation key
     }
   };
 
   // New handler for Thumbnail link
   const handleCopyThumbnailLink = async (file: FileInfo) => {
     if (!file.thumb) {
-      toast.error("Thumbnail URL not available");
+      toast.error(t('galleryThumbnailUrlNotAvailable')); // Use translation key
       return;
     }
     try {
       await navigator.clipboard.writeText(file.thumb);
-      toast.success("Thumbnail link copied to clipboard");
+      toast.success(t('galleryThumbnailLinkCopied')); // Use translation key
     } catch (error: any) {
-      toast.error(`Error copying Thumbnail link: ${error.message || 'Unknown error'}`);
+      toast.error(`${t('galleryErrorCopyingThumbnailLink')} ${error.message || t('galleryUnknownError')}`); // Use translation key
     }
   };
 
   const handleDelete = async (file: FileInfo) => {
     if (!alistService) return;
 
-    if (!window.confirm(`Are you sure you want to delete ${file.name}?`)) {
+    if (!window.confirm(t('galleryConfirmDelete', { fileName: file.name }))) { // Use translation key with interpolation
       return;
     }
 
     try {
       await alistService.deleteFile(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
-      toast.success(`${file.name} deleted successfully`);
+      toast.success(t('galleryDeleteSuccess', { fileName: file.name })); // Use translation key with interpolation
       loadFiles();
     } catch (error: any) {
-      toast.error(`Error deleting file: ${error.message || 'Unknown error'}`);
+      toast.error(`${t('galleryErrorDeletingFile')} ${error.message || t('galleryUnknownError')}`); // Use translation key
     }
   };
 
@@ -177,12 +179,12 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
             disabled={path === "/"}
           >
             <ChevronLeft className="h-4 w-4 mr-1" />
-            Up
+            {t('galleryUp')} {/* Use translation key */}
           </Button>
-          <span className="text-sm font-medium">Current path: {path}</span>
+          <span className="text-sm font-medium">{t('galleryCurrentPath')} {path}</span> {/* Use translation key */}
         </div>
         <Button variant="outline" size="sm" onClick={loadFiles}>
-          Refresh
+          {t('galleryRefresh')} {/* Use translation key */}
         </Button>
       </div>
 
@@ -192,7 +194,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
         </div>
       ) : files.length === 0 ? (
         <div className="text-center p-12 text-gray-500">
-          No images or folders found in this directory
+          {t('galleryNoFilesFound')} {/* Use translation key */}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -258,11 +260,11 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                               if (file.thumb) {
                                 window.open(file.thumb, '_blank');
                               } else {
-                                toast.error("Thumbnail URL not available");
+                                toast.error(t('galleryThumbnailUrlNotAvailable')); // Use translation key
                               }
                               }}
                             >
-                              Thumb
+                              {t('galleryThumb')}
                             </Button>
                           )}
                           {/* Existing Delete Button */}
@@ -291,7 +293,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                             handleCopyMarkdownLink(file);
                             }}
                           >
-                            MD
+                            {t('galleryMD')}
                           </Button>
                           {/* HTML Button */}
                           <Button
@@ -303,7 +305,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                             handleCopyHtmlLink(file);
                             }}
                           >
-                            HTML
+                            {t('galleryHTML')}
                           </Button>
                           {/* UBB Button */}
                           <Button
@@ -315,7 +317,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                             handleCopyUbbLink(file);
                             }}
                           >
-                            UBB
+                            {t('galleryUBB')}
                           </Button>
                         </div>
                        </>
@@ -349,9 +351,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
            <div className="relative bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-hidden"
                 onClick={(e) => e.stopPropagation()}> {/* Prevent closing when clicking inside */}
              <div className="p-4 flex justify-between items-center border-b">
-               <h3 className="font-medium">Image Preview</h3>
+               <h3 className="font-medium">{t('galleryImagePreview')}</h3> {/* Use translation key */}
                <Button variant="ghost" size="sm" onClick={() => setCurrentFile(null)}>
-                 Close
+                 {t('galleryClose')} {/* Use translation key */}
                </Button>
              </div>
              <div className="p-4 overflow-auto" style={{maxHeight: 'calc(90vh - 60px)'}}>
@@ -366,9 +368,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
              <div className="p-4 border-t">
                <Button onClick={() => {
                  navigator.clipboard.writeText(currentImageUrl);
-                 toast.success("Media URL copied to clipboard");
+                 toast.success(t('galleryMediaUrlCopied')); // Use translation key
                }}>
-                 Copy Media URL
+                 {t('galleryMediaUrlCopied')} {/* Use translation key */}
                </Button>
              </div>
            </div>
@@ -378,7 +380,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
        {/* Image Carousel */}
        {files.filter(isImageFile).length > 0 && (
          <div className="mt-8">
-           <h3 className="text-lg font-semibold mb-4">Image Carousel</h3>
+           <h3 className="text-lg font-semibold mb-4">{t('galleryImageCarousel')}</h3> {/* Use translation key */}
            <Carousel className="w-full">
              <CarouselContent>
                {files.filter(isImageFile).map((file) => (
