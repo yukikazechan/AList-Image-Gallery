@@ -84,9 +84,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
     try {
       const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
       await navigator.clipboard.writeText(fileUrl);
-      toast.success(t('galleryImageLinkCopied')); // Use translation key
+      toast.success(t('imageLinkCopied'));
     } catch (error: any) {
-      toast.error(`${t('galleryErrorCopyingLink')} ${error.message || t('galleryUnknownError')}`); // Use translation key
+      toast.error(`${t('galleryErrorCopyingLink')} ${error.message || t('galleryUnknownError')}`);
     }
   };
 
@@ -97,9 +97,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
       const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
       const markdownLink = `![${file.name}](${fileUrl})`;
       await navigator.clipboard.writeText(markdownLink);
-      toast.success(t('galleryMarkdownLinkCopied')); // Use translation key
+      toast.success(t('markdownLinkCopied'));
     } catch (error: any) {
-      toast.error(`${t('galleryErrorCopyingMarkdownLink')} ${error.message || t('galleryUnknownError')}`); // Use translation key
+      toast.error(`${t('galleryErrorCopyingMarkdownLink')} ${error.message || t('galleryUnknownError')}`);
     }
   };
 
@@ -110,9 +110,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
       const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
       const htmlLink = `<img src="${fileUrl}" alt="${file.name}">`;
       await navigator.clipboard.writeText(htmlLink);
-      toast.success(t('galleryHtmlLinkCopied')); // Use translation key
+      toast.success(t('htmlLinkCopied'));
     } catch (error: any) {
-      toast.error(`${t('galleryErrorCopyingHtmlLink')} ${error.message || t('galleryUnknownError')}`); // Use translation key
+      toast.error(`${t('galleryErrorCopyingHtmlLink')} ${error.message || t('galleryUnknownError')}`);
     }
   };
 
@@ -123,9 +123,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
       const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
       const ubbLink = `[img]${fileUrl}[/img]`;
       await navigator.clipboard.writeText(ubbLink);
-      toast.success(t('galleryUbbLinkCopied')); // Use translation key
+      toast.success(t('ubbLinkCopied'));
     } catch (error: any) {
-      toast.error(`${t('galleryErrorCopyingUbbLink')} ${error.message || t('galleryUnknownError')}`); // Use translation key
+      toast.error(`${t('galleryErrorCopyingUbbLink')} ${error.message || t('galleryUnknownError')}`);
     }
   };
 
@@ -137,9 +137,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
     }
     try {
       await navigator.clipboard.writeText(file.thumb);
-      toast.success(t('galleryThumbnailLinkCopied')); // Use translation key
+      toast.success(t('thumbnailLinkCopied'));
     } catch (error: any) {
-      toast.error(`${t('galleryErrorCopyingThumbnailLink')} ${error.message || t('galleryUnknownError')}`); // Use translation key
+      toast.error(`${t('galleryErrorCopyingThumbnailLink')} ${error.message || t('galleryUnknownError')}`);
     }
   };
 
@@ -264,7 +264,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                               }
                               }}
                             >
-                              {t('galleryThumb')}
+                              {t('thumbButton')}
                             </Button>
                           )}
                           {/* Existing Delete Button */}
@@ -293,7 +293,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                             handleCopyMarkdownLink(file);
                             }}
                           >
-                            {t('galleryMD')}
+                            {t('mdButton')}
                           </Button>
                           {/* HTML Button */}
                           <Button
@@ -305,7 +305,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                             handleCopyHtmlLink(file);
                             }}
                           >
-                            {t('galleryHTML')}
+                            {t('htmlButton')}
                           </Button>
                           {/* UBB Button */}
                           <Button
@@ -317,7 +317,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
                             handleCopyUbbLink(file);
                             }}
                           >
-                            {t('galleryUBB')}
+                            {t('ubbButton')}
                           </Button>
                         </div>
                        </>
@@ -368,9 +368,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
              <div className="p-4 border-t">
                <Button onClick={() => {
                  navigator.clipboard.writeText(currentImageUrl);
-                 toast.success(t('galleryMediaUrlCopied')); // Use translation key
+                 toast.success(t('mediaUrlCopied'));
                }}>
-                 {t('galleryMediaUrlCopied')} {/* Use translation key */}
+                 {t('mediaUrlCopied')}
                </Button>
              </div>
            </div>

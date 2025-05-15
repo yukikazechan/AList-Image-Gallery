@@ -10,50 +10,86 @@ import { useTranslation } from 'react-i18next'; // Import useTranslation
 
 const Index = () => {
   const { t } = useTranslation(); // Initialize useTranslation
-  const [token, setToken] = useState<string>(() => {
-    return localStorage.getItem("alist_token") || "";
-  });
-  const [serverUrl, setServerUrl] = useState<string>(() => {
-    return localStorage.getItem("alist_server_url") || "";
-  });
+  const [token, setToken] = useState<string>(localStorage.getItem("alist_token") || "");
+  const [username, setUsername] = useState<string>(localStorage.getItem("alist_username") || "");
+  const [password, setPassword] = useState<string>(localStorage.getItem("alist_password") || "");
+  const [serverUrl, setServerUrl] = useState<string>(localStorage.getItem("alist_server_url") || "");
   const [path, setPath] = useState<string>("/");
   const [alistService, setAlistService] = useState<AlistService | null>(null);
   const [activeTab, setActiveTab] = useState<string>("upload");
   const [connectionVerified, setConnectionVerified] = useState<boolean>(false);
+  // Store which auth method was last successfully used or attempted
+  const [authMethod, setAuthMethod] = useState<"token" | "credentials" | null>(() => {
+    if (localStorage.getItem("alist_token")) return "token";
+    if (localStorage.getItem("alist_username")) return "credentials";
+    return null;
+  });
 
-  // Initialize AlistService when token changes
   useEffect(() => {
-    if (token && serverUrl) {
-      localStorage.setItem("alist_token", token);
+    let service: AlistService | null = null;
+    let currentAuthDetails: { token: string } | { username?: string; password?: string } | null = null;
+
+    if (serverUrl) {
+      if (authMethod === "token" && token) {
+        currentAuthDetails = { token };
+        localStorage.setItem("alist_token", token);
+        localStorage.removeItem("alist_username");
+        localStorage.removeItem("alist_password");
+      } else if (authMethod === "credentials" && username) { // Password can be empty
+        currentAuthDetails = { username, password };
+        localStorage.setItem("alist_username", username);
+        localStorage.setItem("alist_password", password);
+        localStorage.removeItem("alist_token");
+      }
       localStorage.setItem("alist_server_url", serverUrl);
-      
-      const service = new AlistService(token, serverUrl);
-      setAlistService(service);
-      
-      // Test connection
+
+      if (currentAuthDetails) {
+        service = new AlistService(currentAuthDetails, serverUrl);
+      }
+    } else {
+      localStorage.removeItem("alist_token");
+      localStorage.removeItem("alist_username");
+      localStorage.removeItem("alist_password");
+      localStorage.removeItem("alist_server_url");
+    }
+    
+    setAlistService(service);
+
+    if (service) {
       service.testConnection()
         .then(isValid => {
           setConnectionVerified(isValid);
           if (!isValid) {
-            toast.error(t("connectionError")); // Use translation key
+            toast.error(t("connectionError"));
           }
         })
         .catch(error => {
           console.error("Connection test error:", error);
           setConnectionVerified(false);
+          // toast.error(`${t("connectionError")}: ${error.message}`);
         });
     } else {
-      if (!token) localStorage.removeItem("alist_token");
-      if (!serverUrl) localStorage.removeItem("alist_server_url");
-      setAlistService(null);
       setConnectionVerified(false);
     }
-  }, [token, serverUrl, t]); // Add t to dependency array
+  }, [token, username, password, serverUrl, authMethod, t]);
 
-  const handleConnectionSubmit = (newToken: string, newServerUrl: string) => {
-    setToken(newToken);
+  const handleConnectionSubmit = (
+    authDetails: { token: string } | { username?: string; password?: string },
+    newServerUrl: string
+  ) => {
     setServerUrl(newServerUrl);
-    // Toast success message will be shown after connection is tested
+    if ("token" in authDetails) {
+      setToken(authDetails.token);
+      setUsername(""); // Clear other auth method
+      setPassword("");
+      setAuthMethod("token");
+    } else {
+      setToken(""); // Clear other auth method
+      setUsername(authDetails.username || "");
+      setPassword(authDetails.password || "");
+      setAuthMethod("credentials");
+    }
+    // Connection test and toast will be handled by useEffect
   };
 
   const handleUploadSuccess = () => {
@@ -72,16 +108,18 @@ const Index = () => {
           <p className="text-gray-600">{t("appDescription")}</p> {/* Use translation key */}
         </header>
 
-        {(!token || !serverUrl || !connectionVerified) && (
+        {!connectionVerified && (
           <TokenInput
             initialToken={token}
             initialServerUrl={serverUrl}
+            initialUsername={username}
+            initialPassword={password}
             onSubmit={handleConnectionSubmit}
-            isUpdate={!!(token && serverUrl && !connectionVerified)}
+            isUpdate={!!((token || username) && serverUrl)} // Show as update if any credential exists
           />
         )}
 
-        {token && serverUrl && connectionVerified && (
+        {connectionVerified && alistService && (
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsList className="grid w-full grid-cols-3 mb-8">
               <TabsTrigger value="upload">{t("uploadTab")}</TabsTrigger> {/* Use translation key */}
@@ -110,6 +148,8 @@ const Index = () => {
               <TokenInput
                 initialToken={token}
                 initialServerUrl={serverUrl}
+                initialUsername={username}
+                initialPassword={password}
                 onSubmit={handleConnectionSubmit}
                 isUpdate={true}
               />

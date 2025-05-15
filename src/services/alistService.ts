@@ -22,18 +22,61 @@ export interface ListResponse {
 export class AlistService {
   private client: AxiosInstance;
   private baseUrl: string;
-  private token: string;
-  
-  constructor(token: string, baseUrl: string = "") {
-    this.token = token.trim();
+  private token?: string;
+  private username?: string;
+  private password?: string;
+
+  constructor(
+    authDetails: { token: string } | { username?: string; password?: string },
+    baseUrl: string = ""
+  ) {
     this.baseUrl = baseUrl.trim();
-    
+    if ("token" in authDetails) {
+      this.token = authDetails.token.trim();
+    } else {
+      this.username = authDetails.username?.trim();
+      this.password = authDetails.password; // Password should not be trimmed if it contains spaces
+    }
+
     this.client = axios.create({
       baseURL: this.baseUrl,
-      headers: {
-        Authorization: this.token
-      }
+      headers: this.token ? { Authorization: this.token } : {},
     });
+  }
+
+  private async _login(): Promise<void> {
+    if (!this.username || !this.password) {
+      throw new Error("Username and password are required for login.");
+    }
+    try {
+      const response = await this.client.post("/api/auth/login", {
+        username: this.username,
+        password: this.password,
+      });
+      if (response.data && response.data.code === 200 && response.data.data && response.data.data.token) {
+        this.token = response.data.data.token;
+        this.client.defaults.headers.common["Authorization"] = this.token;
+        // Clear username and password after successful login for security
+        this.username = undefined;
+        this.password = undefined;
+      } else {
+        throw new Error(
+          `Login failed: ${response.data.message || "Invalid credentials or server error"}`
+        );
+      }
+    } catch (error: any) {
+      console.error("Login error:", error);
+      if (error.response) {
+        throw new Error(
+          `Login failed: ${error.response.data?.message || error.response.statusText || "Server error"}`
+        );
+      } else if (error.request) {
+        throw new Error(
+          "Login failed: No response from server. Please check your server URL and network connection."
+        );
+      }
+      throw error;
+    }
   }
 
   // 设置基础 URL
@@ -45,12 +88,17 @@ export class AlistService {
   // 设置Token
   setToken(token: string) {
     this.token = token.trim();
-    this.client = axios.create({
-      baseURL: this.baseUrl,
-      headers: {
-        Authorization: this.token
-      }
-    });
+    this.username = undefined; // Clear username/password if token is set directly
+    this.password = undefined;
+    this.client.defaults.headers.common["Authorization"] = this.token;
+  }
+
+  // Method to set username and password
+  setCredentials(username?: string, password?: string) {
+    this.username = username?.trim();
+    this.password = password;
+    this.token = undefined; // Clear token if credentials are set
+    delete this.client.defaults.headers.common["Authorization"];
   }
 
   // 获取当前基础URL
@@ -61,40 +109,42 @@ export class AlistService {
   // Test connection to verify credentials
   async testConnection(): Promise<boolean> {
     try {
+      if (!this.token && this.username && this.password) {
+        console.log("Attempting login before testing connection...");
+        await this._login();
+      }
+
+      if (!this.token) {
+        throw new Error("No token available for testing connection. Please provide a token or username/password.");
+      }
+
       console.log('Testing connection with URL:', this.baseUrl);
-      console.log('Authorization header:', `Bearer ${this.token.substring(0, 5)}...`);
+      console.log('Authorization header (first 5 chars):', this.token ? `${this.token.substring(0, 5)}...` : 'No token');
       
       const response = await this.client.post('/api/fs/list', { path: '/' });
       console.log('Connection test response:', response.data);
       
       if (response.data && response.data.code === 401) {
-        console.error('Authentication failed:', response.data.message);
-        throw new Error(`Authentication failed: ${response.data.message || 'Invalid token'}`);
+        console.error('Authentication failed during testConnection:', response.data.message);
+        throw new Error(`Authentication failed: ${response.data.message || 'Invalid token or credentials'}`);
       }
       
       return response.data && response.data.code === 200;
     } catch (error: any) {
-      console.error('Connection test failed:', error);
+      console.error('Connection test failed:', error.message);
       
-      // Handle Axios errors
       if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
         console.error('Server error details:', error.response.data);
         console.error('Status code:', error.response.status);
-        
         if (error.response.status === 401) {
-          throw new Error(`Authentication failed: ${error.response.data?.message || 'token is invalidated'}`);
+          throw new Error(`Authentication failed: ${error.response.data?.message || 'Token or credentials might be invalid'}`);
         }
         throw new Error(`Server error: ${error.response.data?.message || error.response.statusText || 'Unknown server error'}`);
       } else if (error.request) {
-        // The request was made but no response was received
         console.error('No response received for request:', error.request);
         throw new Error('No response from server. Please check your server URL and network connection.');
       }
-      
-      // Re-throw the original error if it's not an Axios error
-      throw error;
+      throw error; // Re-throw other errors
     }
   }
 
@@ -102,23 +152,27 @@ export class AlistService {
   async listFiles(path: string): Promise<FileInfo[]> {
     try {
       console.log('Listing files at path:', path);
+      if (!this.token && this.username && this.password) {
+        await this._login();
+      }
+      if (!this.token) throw new Error("Not authenticated");
+
       const response = await this.client.post('/api/fs/list', { path });
       
-      // Check if request was successful
       if (response.data && response.data.code === 200 && response.data.data && response.data.data.content) {
         return response.data.data.content;
       } else {
-        console.log('Response structure:', JSON.stringify(response.data));
+        console.log('Response structure (listFiles):', JSON.stringify(response.data));
         if (response.data && response.data.code === 401) {
-          throw new Error('Authentication failed - please check your token and server URL');
+          throw new Error('Authentication failed - please check your token/credentials and server URL');
         }
         if (response.data && response.data.code !== 200) {
-          throw new Error(`Server error: ${response.data.message || 'Unknown error'}`);
+          throw new Error(`Server error (listFiles): ${response.data.message || 'Unknown error'}`);
         }
-        return []; // Return empty array if content is not available
+        return [];
       }
     } catch (error: any) {
-      console.error('Error listing files:', error);
+      console.error('Error listing files:', error.message);
       throw error;
     }
   }
@@ -126,41 +180,34 @@ export class AlistService {
   // 上传文件
   async uploadFile(path: string, file: File): Promise<any> {
     try {
-      // Use the file directly as the request body for PUT
-      // Remove FormData as we are not sending multipart/form-data
+      if (!this.token && this.username && this.password) {
+        await this._login();
+      }
+      if (!this.token) throw new Error("Not authenticated for uploadFile");
 
-      // Construct the full target path
       const fullPath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
-      const encodedFullPath = encodeURIComponent(fullPath); // URL encode the path
+      const encodedFullPath = encodeURIComponent(fullPath);
 
-      // Change back to PUT request to /api/fs/put
-      const response = await this.client.put(`/api/fs/put`, file, { // Send file directly as body
+      const response = await this.client.put(`/api/fs/put`, file, {
         headers: {
-          // Content-Type will be automatically set by the browser/Axios based on the file type
-          'File-Path': encodedFullPath, // Add File-Path header with encoded path
-          'Authorization': this.token // Ensure Authorization header is included (without Bearer)
-          // Remove As-Task header
+          'File-Path': encodedFullPath,
+          // Authorization is now handled by client defaults or _login
         }
-        // Remove params
       });
 
       if (response.data && response.data.code === 401) {
-        throw new Error('Authentication failed - please check your token and server URL');
+        throw new Error('Authentication failed (uploadFile) - please check your token/credentials and server URL');
       }
-
-      // AList /api/fs/put usually returns code 200 on success
       if (response.data && response.data.code !== 200) {
-         throw new Error(`Upload failed: ${response.data.message || 'Unknown error from AList API'}`);
+         throw new Error(`Upload failed: ${response.data.message || 'Unknown error from AList API (uploadFile)'}`);
       }
-
       return response.data;
     } catch (error: any) {
-      console.error('Error uploading file:', error);
-      // Handle Axios errors specifically if needed, similar to testConnection
+      console.error('Error uploading file:', error.message);
       if (error.response) {
-         throw new Error(`Upload failed: ${error.response.data?.message || error.response.statusText || 'Server error'}`);
+         throw new Error(`Upload failed: ${error.response.data?.message || error.response.statusText || 'Server error (uploadFile)'}`);
       } else if (error.request) {
-         throw new Error('Upload failed: No response from server. Please check your server URL and network connection.');
+         throw new Error('Upload failed: No response from server (uploadFile). Please check your server URL and network connection.');
       }
       throw error;
     }
@@ -169,27 +216,35 @@ export class AlistService {
   // 获取文件链接（直接预览或下载）
   async getFileLink(path: string): Promise<string> {
     try {
+      if (!this.token && this.username && this.password) {
+        await this._login();
+      }
+      if (!this.token) throw new Error("Not authenticated");
+
       const response = await this.client.post('/api/fs/get', { path });
       
-      // Check if response is successful
       if (response.data && response.data.code === 200 && response.data.data && response.data.data.raw_url) {
         let rawUrl = response.data.data.raw_url;
-        // Adjust the protocol of the URL to match the protocol of the current web app to avoid mixed content issues
-        if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-          rawUrl = rawUrl.replace(/^http:/, 'https:');
-        } else if (typeof window !== 'undefined' && window.location.protocol === 'http:') {
-          rawUrl = rawUrl.replace(/^https:/, 'http:');
+        if (typeof window !== 'undefined') {
+          if (window.location.protocol === 'https:') {
+            rawUrl = rawUrl.replace(/^http:/, 'https:');
+          } else if (window.location.protocol === 'http:') {
+            rawUrl = rawUrl.replace(/^https:/, 'http:');
+          }
         }
         return rawUrl;
       } else {
-        console.log('Response structure for file link:', JSON.stringify(response.data));
+        console.log('Response structure for file link (getFileLink):', JSON.stringify(response.data));
         if (response.data && response.data.code === 401) {
-          throw new Error('Authentication failed - please check your token and server URL');
+          throw new Error('Authentication failed - please check your token/credentials and server URL (getFileLink)');
         }
-        return ''; // Return empty string if raw_url is not available
+        if (response.data && response.data.code !== 200) {
+            throw new Error(`Server error (getFileLink): ${response.data.message || 'Unknown error'}`);
+        }
+        return '';
       }
-    } catch (error) {
-      console.error('Error getting file link:', error);
+    } catch (error: any) {
+      console.error('Error getting file link:', error.message);
       throw error;
     }
   }
@@ -197,17 +252,24 @@ export class AlistService {
   // 创建文件夹
   async createFolder(path: string, name: string): Promise<any> {
     try {
+      if (!this.token && this.username && this.password) {
+        await this._login();
+      }
+      if (!this.token) throw new Error("Not authenticated");
+
       const response = await this.client.post('/api/fs/mkdir', {
-        path: `${path}/${name}`
+        path: `${path}/${name}` // Assuming path is the parent directory and name is the new folder name
       });
       
       if (response.data && response.data.code === 401) {
-        throw new Error('Authentication failed - please check your token and server URL');
+        throw new Error('Authentication failed - please check your token/credentials and server URL (createFolder)');
       }
-      
+      if (response.data && response.data.code !== 200) {
+        throw new Error(`Folder creation failed: ${response.data.message || 'Unknown error from AList API (createFolder)'}`);
+      }
       return response.data;
-    } catch (error) {
-      console.error('Error creating folder:', error);
+    } catch (error: any) {
+      console.error('Error creating folder:', error.message);
       throw error;
     }
   }
@@ -215,7 +277,11 @@ export class AlistService {
   // 删除文件或文件夹
   async deleteFile(path: string): Promise<any> {
     try {
-      // Split the path into directory and file name
+      if (!this.token && this.username && this.password) {
+        await this._login();
+      }
+      if (!this.token) throw new Error("Not authenticated for deleteFile");
+
       const lastSlashIndex = path.lastIndexOf('/');
       let dir = '/';
       let name = path;
@@ -225,24 +291,25 @@ export class AlistService {
         name = path.substring(lastSlashIndex + 1);
       }
 
-      // AList API expects 'names' as an array and 'dir'
       const response = await this.client.post('/api/fs/remove', {
         names: [name],
         dir: dir
       });
       
       if (response.data && response.data.code === 401) {
-        throw new Error('Authentication failed - please check your token and server URL');
+        throw new Error('Authentication failed (deleteFile) - please check your token/credentials and server URL');
       }
-
-      // Check if the AList API operation was successful
       if (response.data && response.data.code !== 200) {
-        throw new Error(`Deletion failed: ${response.data.message || 'Unknown error from AList API'}`);
+        throw new Error(`Deletion failed: ${response.data.message || 'Unknown error from AList API (deleteFile)'}`);
       }
-
       return response.data;
-    } catch (error) {
-      console.error('Error deleting file:', error);
+    } catch (error: any) {
+      console.error('Error deleting file:', error.message);
+      if (error.response) {
+         throw new Error(`Deletion failed: ${error.response.data?.message || error.response.statusText || 'Server error (deleteFile)'}`);
+      } else if (error.request) {
+         throw new Error('Deletion failed: No response from server (deleteFile). Please check your server URL and network connection.');
+      }
       throw error;
     }
   }
