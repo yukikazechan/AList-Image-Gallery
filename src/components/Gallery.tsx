@@ -1,15 +1,26 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { AlistService, FileInfo } from "@/services/alistService";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   ChevronLeft,
   FolderOpen,
   Image as ImageIcon,
   Link,
   Trash2,
-  Loader2
+  Loader2,
+  KeyRound
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -33,30 +44,87 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
-  const [currentFile, setCurrentFile] = useState<FileInfo | null>(null); // Add state for current file info
+  const [currentFile, setCurrentFile] = useState<FileInfo | null>(null);
   const [showFullImage, setShowFullImage] = useState<boolean>(false);
 
-  const loadFiles = async () => {
-    if (!alistService) return;
+  const [directoryPasswords, setDirectoryPasswords] = useState<Record<string, string>>({});
+  const [showPasswordDialog, setShowPasswordDialog] = useState<boolean>(false);
+  const [passwordPromptPath, setPasswordPromptPath] = useState<string>("");
+  const [currentPasswordInput, setCurrentPasswordInput] = useState<string>("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
+  const loadFiles = useCallback(async (currentPath?: string, dirPassword?: string) => {
+    if (!alistService) return;
+    const pathToLoad = currentPath || path;
     setLoading(true);
+    setPasswordError(null); // Reset password error on new load attempt
+
     try {
-      const filesList = await alistService.listFiles(path);
-      // Filter to only show directories and images, exclude videos
+      const passwordToUse = dirPassword || directoryPasswords[pathToLoad];
+      const filesList = await alistService.listFiles(pathToLoad, passwordToUse);
       const filteredFiles = filesList.filter(file =>
         file.is_dir || file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif)$/i)
       );
       setFiles(filteredFiles);
+      if (passwordToUse && pathToLoad === passwordPromptPath) { // If password was used successfully for prompted path
+        setShowPasswordDialog(false); // Close dialog if open
+        setCurrentPasswordInput(""); // Clear input
+      }
     } catch (error: any) {
-      toast.error(`${t('galleryErrorLoadingFiles')} ${error.message || t('galleryUnknownError')}`); // Use translation key
+      const errorMessage = error.message || t('galleryUnknownError');
+      const lowerErrorMessage = errorMessage.toLowerCase();
+
+      // Keywords indicating a password-related issue
+      const isPasswordError =
+        lowerErrorMessage.includes("password") &&
+        (lowerErrorMessage.includes("incorrect") ||
+         lowerErrorMessage.includes("permission") ||
+         lowerErrorMessage.includes("required") ||
+         lowerErrorMessage.includes("denied") ||
+         lowerErrorMessage.includes("unauthorized")); // Added unauthorized
+
+      // Specific AList messages that often relate to password issues even without the word "password"
+      const isObjectNotFoundError =
+        lowerErrorMessage.includes("object not found") ||
+        lowerErrorMessage.includes("failed get dir");
+
+      if (isPasswordError || isObjectNotFoundError) {
+        setPasswordPromptPath(pathToLoad);
+        setShowPasswordDialog(true);
+        
+        if (lowerErrorMessage.includes("incorrect") || lowerErrorMessage.includes("permission") || (isObjectNotFoundError && directoryPasswords[pathToLoad])) {
+            // If an "object not found" error occurs AND we had tried a password for this path, it's likely the password was wrong.
+            setPasswordError(t('galleryPasswordIncorrectOrNoPermission'));
+        } else if (isObjectNotFoundError) {
+            // If "object not found" and no password was attempted, it might be a protected folder or truly not found.
+             setPasswordError(t('galleryPasswordOrPathInvalid')); // New i18n key for this case
+        }
+         else {
+            setPasswordError(t('galleryPasswordPossiblyRequired'));
+        }
+        setFiles([]);
+      } else {
+        toast.error(`${t('galleryErrorLoadingFiles')} ${errorMessage}`);
+        setFiles([]);
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [alistService, path, t, directoryPasswords, passwordPromptPath]);
 
   useEffect(() => {
     loadFiles();
-  }, [alistService, path, t]); // Add t to dependency array
+  }, [loadFiles]); // Use the memoized loadFiles
+
+  const handlePasswordSubmit = () => {
+    if (!passwordPromptPath || !currentPasswordInput) return;
+    setDirectoryPasswords(prev => ({ ...prev, [passwordPromptPath]: currentPasswordInput }));
+    // loadFiles will be triggered by useEffect watching directoryPasswords if we update it,
+    // or we can call it directly. Calling directly ensures immediate action.
+    loadFiles(passwordPromptPath, currentPasswordInput);
+    // setShowPasswordDialog(false); // Moved to loadFiles success
+    // setCurrentPasswordInput(""); // Moved to loadFiles success
+  };
 
   const handleNavigate = (file: FileInfo) => {
     if (file.is_dir) {
@@ -179,14 +247,74 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
             disabled={path === "/"}
           >
             <ChevronLeft className="h-4 w-4 mr-1" />
-            {t('galleryUp')} {/* Use translation key */}
+            {t('galleryUp')}
           </Button>
-          <span className="text-sm font-medium">{t('galleryCurrentPath')} {path}</span> {/* Use translation key */}
+          <span className="text-sm font-medium">{t('galleryCurrentPath')} {path}</span>
         </div>
-        <Button variant="outline" size="sm" onClick={loadFiles}>
-          {t('galleryRefresh')} {/* Use translation key */}
-        </Button>
+        <div className="flex items-center space-x-2">
+          {path !== "/" && ( // Show password button only if not in root
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setPasswordPromptPath(path);
+                setCurrentPasswordInput(directoryPasswords[path] || "");
+                setShowPasswordDialog(true);
+                setPasswordError(null); // Clear previous error
+              }}
+            >
+              <KeyRound className="h-4 w-4 mr-1" />
+              {t('galleryEnterPassword')}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => loadFiles()}>
+            {t('galleryRefresh')}
+          </Button>
+        </div>
       </div>
+
+      <Dialog open={showPasswordDialog} onOpenChange={(isOpen) => {
+        setShowPasswordDialog(isOpen);
+        if (!isOpen) {
+          setPasswordError(null); // Clear error when dialog is closed
+          setCurrentPasswordInput(""); // Clear input when dialog is closed
+        }
+      }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{t('galleryPasswordRequiredTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('galleryPasswordRequiredDesc', { path: passwordPromptPath })}
+              {passwordError && <p className="text-red-500 text-sm mt-2">{passwordError}</p>}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="dir-password" className="text-right">
+                {t('galleryPasswordLabel')}
+              </Label>
+              <Input
+                id="dir-password"
+                type="password"
+                value={currentPasswordInput}
+                onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                className="col-span-3"
+                onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => {
+              setShowPasswordDialog(false);
+              setPasswordError(null);
+              setCurrentPasswordInput("");
+            }}>
+              {t('galleryPasswordDialogCancelButton')}
+            </Button>
+            <Button type="submit" onClick={handlePasswordSubmit}>{t('galleryPasswordDialogSubmitButton')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {loading ? (
         <div className="flex justify-center p-12">

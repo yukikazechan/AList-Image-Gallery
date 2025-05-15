@@ -136,7 +136,7 @@ const Index = () => {
               />
             </TabsContent>
             
-            <TabsContent value="gallery">
+            <TabsContent value="gallery" forceMount={true}>
               <Gallery
                 alistService={alistService}
                 path={path}

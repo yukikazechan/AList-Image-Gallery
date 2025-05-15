@@ -149,22 +149,44 @@ export class AlistService {
   }
 
   // 获取文件列表
-  async listFiles(path: string): Promise<FileInfo[]> {
+  async listFiles(path: string, password?: string): Promise<FileInfo[]> {
     try {
-      console.log('Listing files at path:', path);
+      console.log('Listing files at path:', path, password ? "with password" : "without password");
       if (!this.token && this.username && this.password) {
+        // This login is for the main AList account, separate from directory passwords
         await this._login();
       }
-      if (!this.token) throw new Error("Not authenticated");
+      // AList directory passwords are often separate from main account authentication.
+      // Even with a valid token, accessing an encrypted directory might still require its specific password.
 
-      const response = await this.client.post('/api/fs/list', { path });
+      const requestBody: { path: string; password?: string; page?: number; per_page?: number; refresh?: boolean } = {
+        path,
+        // page: 1, // Default or allow customization
+        // per_page: 0, // Default (no pagination) or allow customization
+        // refresh: false // Default or allow customization
+      };
+      if (password) {
+        requestBody.password = password;
+      }
+
+      const response = await this.client.post('/api/fs/list', requestBody);
       
       if (response.data && response.data.code === 200 && response.data.data && response.data.data.content) {
         return response.data.data.content;
       } else {
         console.log('Response structure (listFiles):', JSON.stringify(response.data));
         if (response.data && response.data.code === 401) {
-          throw new Error('Authentication failed - please check your token/credentials and server URL');
+          // This could be main auth failure or directory password issue.
+          // AList API might return 401 if a password is required but not provided for a protected directory.
+          if (response.data.message && (response.data.message.toLowerCase().includes("password") || response.data.message.toLowerCase().includes("unauthorized"))) {
+             throw new Error(`Directory access denied: ${response.data.message}. A password may be required or is incorrect.`);
+          }
+          throw new Error(`Authentication failed: ${response.data.message || 'Please check your token/credentials and server URL'}`);
+        }
+        // Handle "object not found" which can occur with incorrect directory passwords
+        if (response.data && response.data.code === 500 && response.data.message &&
+            (response.data.message.toLowerCase().includes("object not found") || response.data.message.toLowerCase().includes("failed get dir"))) {
+            throw new Error(`Failed to list files: ${response.data.message}. This can be due to an incorrect directory password or the path does not exist.`);
         }
         if (response.data && response.data.code !== 200) {
           throw new Error(`Server error (listFiles): ${response.data.message || 'Unknown error'}`);
@@ -173,6 +195,7 @@ export class AlistService {
       }
     } catch (error: any) {
       console.error('Error listing files:', error.message);
+      // Re-throw the error so the UI layer can catch it and prompt for a password if needed
       throw error;
     }
   }

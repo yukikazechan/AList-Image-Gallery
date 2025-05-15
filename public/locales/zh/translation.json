@@ -87,5 +87,14 @@
   "tokenInputPasswordPlaceholder": "输入您的 AList 密码",
   "tokenInputEnterServerUrl": "请输入服务器 URL。",
   "tokenInputEnterToken": "请输入 AList 令牌。",
-  "tokenInputEnterUsernamePassword": "请输入用户名和密码。"
+  "tokenInputEnterUsernamePassword": "请输入用户名和密码。",
+  "galleryEnterPassword": "输入密码",
+  "galleryPasswordRequiredTitle": "需要密码",
+  "galleryPasswordRequiredDesc": "访问路径 '{{path}}' 需要密码。请输入密码以继续。",
+  "galleryPasswordLabel": "密码",
+  "galleryPasswordDialogCancelButton": "取消",
+  "galleryPasswordDialogSubmitButton": "提交",
+  "galleryPasswordIncorrectOrNoPermission": "密码不正确或无权限。",
+  "galleryPasswordPossiblyRequired": "此目录可能需要密码。",
+  "galleryPasswordOrPathInvalid": "密码不正确，或路径不存在/需要密码。"
 }

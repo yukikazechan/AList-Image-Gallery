@@ -87,5 +87,14 @@
   "tokenInputPasswordPlaceholder": "Enter your AList password",
   "tokenInputEnterServerUrl": "Please enter the server URL.",
   "tokenInputEnterToken": "Please enter the AList token.",
-  "tokenInputEnterUsernamePassword": "Please enter both username and password."
+  "tokenInputEnterUsernamePassword": "Please enter both username and password.",
+  "galleryEnterPassword": "Enter Password",
+  "galleryPasswordRequiredTitle": "Password Required",
+  "galleryPasswordRequiredDesc": "Accessing '{{path}}' requires a password. Please enter it to continue.",
+  "galleryPasswordLabel": "Password",
+  "galleryPasswordDialogCancelButton": "Cancel",
+  "galleryPasswordDialogSubmitButton": "Submit",
+  "galleryPasswordIncorrectOrNoPermission": "Incorrect password or no permission.",
+  "galleryPasswordPossiblyRequired": "This directory may require a password.",
+  "galleryPasswordOrPathInvalid": "Incorrect password, or path does not exist / requires a password."
 }
