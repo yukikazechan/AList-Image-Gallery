@@ -47,6 +47,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     
     try {
       const passwordToUse = directoryPasswords[currentPath]; // Get password from props
+      console.log(`ImageUploader loadDirectories: directoryPasswords props:`, directoryPasswords); // Log full passwords object
       console.log(`ImageUploader loadDirectories: Loading directories for path: ${currentPath}, using password: ${passwordToUse ? 'yes' : 'no'}`); // Log password usage
       const filesList = await alistService.listFiles(currentPath, passwordToUse); // Pass password
       // Filter to only show directories
@@ -60,16 +61,17 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     } finally {
       setIsLoadingDirs(false);
     }
-  }, [alistService, currentPath, directoryPasswords, t]); // Added directoryPasswords to dependency array
+  }, [alistService, currentPath, directoryPasswords, t]);
 
-  // Effect to load directories when alistService or currentPath changes
+  // Effect to load directories when alistService, currentPath, or directoryPasswords changes
   useEffect(() => {
+    console.log("ImageUploader useEffect: alistService, currentPath, or directoryPasswords changed", { alistService: !!alistService, currentPath, directoryPasswords: Object.keys(directoryPasswords).length }); // Log effect trigger
     if (alistService) {
       loadDirectories();
     } else {
       setDirectories([]); // Clear directories if service becomes null
     }
-  }, [alistService, currentPath, loadDirectories]); // Added alistService and currentPath to dependencies
+  }, [alistService, currentPath, directoryPasswords, loadDirectories]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;

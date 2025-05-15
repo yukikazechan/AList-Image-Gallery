@@ -41,7 +41,7 @@ interface GalleryProps {
   setDirectoryPasswords: React.Dispatch<React.SetStateAction<Record<string, string>>>; // Add setDirectoryPasswords prop
 }
 
-const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) => {
+const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, directoryPasswords, setDirectoryPasswords }) => {
   const { t } = useTranslation(); // Initialize useTranslation
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -49,30 +49,10 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
   const [currentFile, setCurrentFile] = useState<FileInfo | null>(null);
   const [showFullImage, setShowFullImage] = useState<boolean>(false);
 
-  // Initialize directoryPasswords from localStorage
-  const [directoryPasswords, setDirectoryPasswords] = useState<Record<string, string>>(() => {
-    try {
-      const storedPasswords = localStorage.getItem("alist_directory_passwords");
-      return storedPasswords ? JSON.parse(storedPasswords) : {};
-    } catch (error) {
-      console.error("Failed to parse directory passwords from localStorage:", error);
-      return {};
-    }
-  });
-
   const [showPasswordDialog, setShowPasswordDialog] = useState<boolean>(false);
   const [passwordPromptPath, setPasswordPromptPath] = useState<string>("");
   const [currentPasswordInput, setCurrentPasswordInput] = useState<string>("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
-
-  // Save directoryPasswords to localStorage whenever it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem("alist_directory_passwords", JSON.stringify(directoryPasswords));
-    } catch (error) {
-      console.error("Failed to save directory passwords to localStorage:", error);
-    }
-  }, [directoryPasswords]);
 
 
   const loadFiles = useCallback(async (currentPath?: string, dirPassword?: string) => {
