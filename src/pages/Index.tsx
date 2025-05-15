@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import TokenInput from "@/components/TokenInput";
@@ -15,7 +15,6 @@ const Index = () => {
   const [password, setPassword] = useState<string>(localStorage.getItem("alist_password") || "");
   const [serverUrl, setServerUrl] = useState<string>(localStorage.getItem("alist_server_url") || "");
   const [path, setPath] = useState<string>("/");
-  const [alistService, setAlistService] = useState<AlistService | null>(null);
   const [activeTab, setActiveTab] = useState<string>("upload");
   const [connectionVerified, setConnectionVerified] = useState<boolean>(false);
   // Store which auth method was last successfully used or attempted
@@ -25,38 +24,68 @@ const Index = () => {
     return null;
   });
 
+  // Initialize directoryPasswords from localStorage in Index component
+  const [directoryPasswords, setDirectoryPasswords] = useState<Record<string, string>>(() => {
+    try {
+      const storedPasswords = localStorage.getItem("alist_directory_passwords");
+      return storedPasswords ? JSON.parse(storedPasswords) : {};
+    } catch (error) {
+      console.error("Failed to parse directory passwords from localStorage in Index:", error);
+      return {};
+    }
+  });
+
+  // Save directoryPasswords to localStorage whenever it changes in Index component
   useEffect(() => {
-    let service: AlistService | null = null;
+    try {
+      localStorage.setItem("alist_directory_passwords", JSON.stringify(directoryPasswords));
+    } catch (error) {
+      console.error("Failed to save directory passwords to localStorage in Index:", error);
+    }
+  }, [directoryPasswords]);
+
+
+  // Use useMemo to create AlistService instance, only recreating when auth details or server URL change
+  const alistService = useMemo(() => {
     let currentAuthDetails: { token: string } | { username?: string; password?: string } | null = null;
 
     if (serverUrl) {
       if (authMethod === "token" && token) {
         currentAuthDetails = { token };
+      } else if (authMethod === "credentials" && username) { // Password can be empty
+        currentAuthDetails = { username, password };
+      }
+
+      if (currentAuthDetails) {
+        return new AlistService(currentAuthDetails, serverUrl);
+      }
+    }
+    return null;
+  }, [token, username, password, serverUrl, authMethod]);
+
+  useEffect(() => {
+    // Update localStorage whenever auth details or server URL change
+    if (serverUrl) {
+      if (authMethod === "token" && token) {
         localStorage.setItem("alist_token", token);
         localStorage.removeItem("alist_username");
         localStorage.removeItem("alist_password");
-      } else if (authMethod === "credentials" && username) { // Password can be empty
-        currentAuthDetails = { username, password };
+      } else if (authMethod === "credentials" && username) {
         localStorage.setItem("alist_username", username);
         localStorage.setItem("alist_password", password);
         localStorage.removeItem("alist_token");
       }
       localStorage.setItem("alist_server_url", serverUrl);
-
-      if (currentAuthDetails) {
-        service = new AlistService(currentAuthDetails, serverUrl);
-      }
     } else {
       localStorage.removeItem("alist_token");
       localStorage.removeItem("alist_username");
       localStorage.removeItem("alist_password");
       localStorage.removeItem("alist_server_url");
     }
-    
-    setAlistService(service);
 
-    if (service) {
-      service.testConnection()
+    // Test connection whenever alistService instance changes
+    if (alistService) {
+      alistService.testConnection()
         .then(isValid => {
           setConnectionVerified(isValid);
           if (!isValid) {
@@ -71,7 +100,7 @@ const Index = () => {
     } else {
       setConnectionVerified(false);
     }
-  }, [token, username, password, serverUrl, authMethod, t]);
+  }, [alistService, token, username, password, serverUrl, authMethod, t]); // Added alistService to dependencies
 
   const handleConnectionSubmit = (
     authDetails: { token: string } | { username?: string; password?: string },
@@ -89,7 +118,7 @@ const Index = () => {
       setPassword(authDetails.password || "");
       setAuthMethod("credentials");
     }
-    // Connection test and toast will be handled by useEffect
+    // useMemo will handle AlistService instance creation, useEffect will handle connection test
   };
 
   const handleUploadSuccess = () => {
@@ -133,14 +162,17 @@ const Index = () => {
                 currentPath={path}
                 onUploadSuccess={handleUploadSuccess}
                 onPathChange={setPath}
+                directoryPasswords={directoryPasswords} // Pass directoryPasswords to ImageUploader
               />
             </TabsContent>
             
-            <TabsContent value="gallery" forceMount={true}>
+            <TabsContent value="gallery">
               <Gallery
                 alistService={alistService}
                 path={path}
                 onPathChange={setPath}
+                directoryPasswords={directoryPasswords} // Pass directoryPasswords to Gallery
+                setDirectoryPasswords={setDirectoryPasswords} // Pass setDirectoryPasswords to Gallery
               />
             </TabsContent>
             

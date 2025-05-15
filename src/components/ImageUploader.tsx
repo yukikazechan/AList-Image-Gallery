@@ -14,13 +14,15 @@ interface ImageUploaderProps {
   currentPath: string;
   onUploadSuccess: () => void;
   onPathChange: (path: string) => void;
+  directoryPasswords: Record<string, string>; // Add directoryPasswords prop
 }
 
 const ImageUploader: React.FC<ImageUploaderProps> = ({
   alistService,
   currentPath,
   onUploadSuccess,
-  onPathChange
+  onPathChange,
+  directoryPasswords // Destructure directoryPasswords prop
 }) => {
   const { t } = useTranslation(); // Initialize useTranslation
   const [isUploading, setIsUploading] = useState(false);
@@ -33,27 +35,41 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   // Load directories in the current path
   const loadDirectories = useCallback(async () => {
-    if (!alistService) return;
+    if (!alistService) {
+      console.log("ImageUploader loadDirectories: alistService is null, returning.");
+      setDirectories([]); // Clear directories if service is not available
+      setIsLoadingDirs(false);
+      return;
+    }
     
     setIsLoadingDirs(true);
     setConnectionError(null);
     
     try {
-      const filesList = await alistService.listFiles(currentPath);
+      const passwordToUse = directoryPasswords[currentPath]; // Get password from props
+      console.log(`ImageUploader loadDirectories: Loading directories for path: ${currentPath}, using password: ${passwordToUse ? 'yes' : 'no'}`); // Log password usage
+      const filesList = await alistService.listFiles(currentPath, passwordToUse); // Pass password
       // Filter to only show directories
       const dirs = filesList.filter(file => file.is_dir);
       setDirectories(dirs);
     } catch (error: any) {
+      console.error("ImageUploader loadDirectories error:", error); // Log the full error
       setConnectionError(error.message || t('imageUploaderUnknownLoadingError')); // Use translation key
       toast.error(`${t('imageUploaderLoadingError')} ${error.message || t('imageUploaderUnknownLoadingError')}`); // Use translation key
+      setDirectories([]); // Clear directories on error
     } finally {
       setIsLoadingDirs(false);
     }
-  }, [alistService, currentPath, t]); // Add t to dependency array
+  }, [alistService, currentPath, directoryPasswords, t]); // Added directoryPasswords to dependency array
 
+  // Effect to load directories when alistService or currentPath changes
   useEffect(() => {
-    loadDirectories();
-  }, [loadDirectories]);
+    if (alistService) {
+      loadDirectories();
+    } else {
+      setDirectories([]); // Clear directories if service becomes null
+    }
+  }, [alistService, currentPath, loadDirectories]); // Added alistService and currentPath to dependencies
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;

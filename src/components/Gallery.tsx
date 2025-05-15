@@ -37,6 +37,8 @@ interface GalleryProps {
   alistService: AlistService | null;
   path: string;
   onPathChange: (path: string) => void;
+  directoryPasswords: Record<string, string>; // Add directoryPasswords prop
+  setDirectoryPasswords: React.Dispatch<React.SetStateAction<Record<string, string>>>; // Add setDirectoryPasswords prop
 }
 
 const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) => {
@@ -47,20 +49,46 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
   const [currentFile, setCurrentFile] = useState<FileInfo | null>(null);
   const [showFullImage, setShowFullImage] = useState<boolean>(false);
 
-  const [directoryPasswords, setDirectoryPasswords] = useState<Record<string, string>>({});
+  // Initialize directoryPasswords from localStorage
+  const [directoryPasswords, setDirectoryPasswords] = useState<Record<string, string>>(() => {
+    try {
+      const storedPasswords = localStorage.getItem("alist_directory_passwords");
+      return storedPasswords ? JSON.parse(storedPasswords) : {};
+    } catch (error) {
+      console.error("Failed to parse directory passwords from localStorage:", error);
+      return {};
+    }
+  });
+
   const [showPasswordDialog, setShowPasswordDialog] = useState<boolean>(false);
   const [passwordPromptPath, setPasswordPromptPath] = useState<string>("");
   const [currentPasswordInput, setCurrentPasswordInput] = useState<string>("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
+  // Save directoryPasswords to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem("alist_directory_passwords", JSON.stringify(directoryPasswords));
+    } catch (error) {
+      console.error("Failed to save directory passwords to localStorage:", error);
+    }
+  }, [directoryPasswords]);
+
+
   const loadFiles = useCallback(async (currentPath?: string, dirPassword?: string) => {
-    if (!alistService) return;
+    if (!alistService) {
+      console.log("loadFiles: alistService is null, returning.");
+      setFiles([]); // Clear files if service is not available
+      setLoading(false);
+      return;
+    }
     const pathToLoad = currentPath || path;
     setLoading(true);
     setPasswordError(null); // Reset password error on new load attempt
 
     try {
       const passwordToUse = dirPassword || directoryPasswords[pathToLoad];
+      console.log(`loadFiles: Loading files for path: ${pathToLoad}, using password: ${passwordToUse ? 'yes' : 'no'}`); // Log password usage
       const filesList = await alistService.listFiles(pathToLoad, passwordToUse);
       const filteredFiles = filesList.filter(file =>
         file.is_dir || file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif)$/i)
@@ -71,6 +99,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
         setCurrentPasswordInput(""); // Clear input
       }
     } catch (error: any) {
+      console.error("loadFiles error:", error); // Log the full error
       const errorMessage = error.message || t('galleryUnknownError');
       const lowerErrorMessage = errorMessage.toLowerCase();
 
@@ -112,9 +141,15 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange }) =
     }
   }, [alistService, path, t, directoryPasswords, passwordPromptPath]);
 
+  // Effect to load files when alistService or path changes
   useEffect(() => {
-    loadFiles();
-  }, [loadFiles]); // Use the memoized loadFiles
+    console.log("Gallery useEffect: alistService or path changed", { alistService: !!alistService, path }); // Log effect trigger
+    if (alistService) {
+      loadFiles();
+    } else {
+      setFiles([]); // Clear files if service becomes null
+    }
+  }, [alistService, path, loadFiles]); // Added alistService and path to dependencies
 
   const handlePasswordSubmit = () => {
     if (!passwordPromptPath || !currentPasswordInput) return;
