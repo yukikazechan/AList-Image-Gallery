@@ -13,9 +13,15 @@ export default {
 	theme: {
 		container: {
 			center: true,
-			padding: '2rem',
+			padding: {
+			     DEFAULT: '1rem', // Default padding for the smallest screens
+			     sm: '2rem',      // Padding for 'sm' screens and up
+			     // lg: '2rem',   // You can add more breakpoints if needed
+			     // xl: '2rem',
+			     // '2xl': '2rem', // For 2xl, it will use this if defined, otherwise fallback to sm or DEFAULT
+			   },
 			screens: {
-				'2xl': '1400px'
+				'2xl': '1400px' // This max-width is for the container itself at the 2xl breakpoint
 			}
 		},
 		extend: {

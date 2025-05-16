@@ -28,7 +28,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [files, setFiles] = useState<FileList | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]); // Changed to array
   const [directories, setDirectories] = useState<FileInfo[]>([]);
   const [isLoadingDirs, setIsLoadingDirs] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -77,12 +77,20 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     const selectedFiles = e.target.files;
     setFiles(selectedFiles);
     
+    // For multiple files, previewing the first one.
+    // Consider showing a list of selected files instead of a single preview for a better UX.
     if (selectedFiles && selectedFiles.length > 0) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreviewUrl(reader.result as string);
-      };
-      reader.readAsDataURL(selectedFiles[0]);
+      const firstFile = selectedFiles[0];
+      if (firstFile.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreviewUrl(reader.result as string);
+        };
+        reader.readAsDataURL(firstFile);
+      } else {
+        // If the first file is not an image, don't attempt to preview.
+        setImagePreviewUrl(null);
+      }
     } else {
       setImagePreviewUrl(null);
     }
@@ -90,44 +98,82 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   const handleUpload = useCallback(async () => {
     if (!alistService || !files || files.length === 0) {
-      toast.error(t('imageUploaderSelectFile')); // Use translation key
+      toast.error(t('imageUploaderSelectFile'));
       return;
     }
 
     setIsUploading(true);
-    setUploadedImageUrl(null);
+    setUploadedImageUrls([]); // Clear previous URLs
 
-    try {
-      const file = files[0];
-      
-      // Check if the file is an image
-      if (!file.type.startsWith('image/')) {
-        toast.error(t('imageUploaderOnlyImagesAllowed')); // Use translation key
+    let allUploadsSuccessful = true;
+    const newUploadedUrls: string[] = [];
+    const imageFilesToUpload = Array.from(files).filter(f => f.type.startsWith('image/'));
+    const totalImageFiles = imageFilesToUpload.length;
+
+    if (totalImageFiles === 0 && files.length > 0) {
+        toast.info(t('imageUploaderNoImagesToUpload'));
         setIsUploading(false);
+        setFiles(null);
+        setImagePreviewUrl(null);
         return;
+    }
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        if (!file.type.startsWith('image/')) {
+          if (files.length === 1) { // Only show skip message if it's not the only file and it's non-image
+            toast.info(t('imageUploaderSkippingNonImage', { fileName: file.name }));
+          }
+          continue;
+        }
+
+        toast.info(t('imageUploaderUploadingFile', { fileName: file.name, current: newUploadedUrls.length + 1, total: totalImageFiles }));
+        await alistService.uploadFile(currentPath, file);
+        
+        try {
+          const fileLink = await alistService.getFileLink(`${currentPath}${currentPath.endsWith('/') ? '' : '/'}${file.name}`);
+          newUploadedUrls.push(fileLink);
+        } catch (linkError) {
+          console.warn(`Could not get link for ${file.name}:`, linkError);
+          // If getting link fails, we might still consider upload successful but without a URL.
+          // For simplicity, we'll count it as a partial failure for URL display.
+           allUploadsSuccessful = false; // Or handle this more granularly
+        }
+
+      } catch (error: any) {
+        allUploadsSuccessful = false;
+        toast.error(t('imageUploaderUploadFailedForFile', { fileName: file.name, error: error.message || t('imageUploaderUnknownLoadingError') }));
       }
+    }
 
-      await alistService.uploadFile(currentPath, file);
-      
-      // Get the file link
-      const fileLink = await alistService.getFileLink(`${currentPath}${currentPath.endsWith('/') ? '' : '/'}${file.name}`);
-      setUploadedImageUrl(fileLink);
-      
+    setIsUploading(false);
+    setUploadedImageUrls(newUploadedUrls);
+
+    if (allUploadsSuccessful && newUploadedUrls.length === totalImageFiles && totalImageFiles > 0) {
+      toast.success(t('imageUploaderAllFilesUploadedSuccess'));
       onUploadSuccess();
-      loadDirectories(); // Refresh directory list
-    } catch (error: any) {
-      toast.error(`${t('imageUploaderCreateFolderFailed')} ${error.message || t('imageUploaderUnknownLoadingError')}`); // Use translation key
-    } finally {
-      setIsUploading(false);
+    } else if (newUploadedUrls.length > 0) {
+      toast.info(t('imageUploaderSomeFilesUploadedSuccess', { count: newUploadedUrls.length, total: totalImageFiles }));
+      onUploadSuccess();
+    } else if (totalImageFiles > 0 && newUploadedUrls.length === 0) { // All image files failed
+        toast.error(t('imageUploaderAllImageFilesFailedToUpload'));
+    } else if (files.length > 0 && totalImageFiles === 0) {
+        // This case is handled earlier, but as a fallback
+        toast.info(t('imageUploaderNoImagesToUpload'));
     }
-  }, [alistService, files, currentPath, onUploadSuccess, loadDirectories, t]); // Add t to dependency array
+    
+    setFiles(null);
+    setImagePreviewUrl(null);
+    loadDirectories();
+  }, [alistService, files, currentPath, onUploadSuccess, loadDirectories, t, setUploadedImageUrls]); // Added setUploadedImageUrls to dependencies
 
-  const copyToClipboard = useCallback(() => {
-    if (uploadedImageUrl) {
-      navigator.clipboard.writeText(uploadedImageUrl);
-      toast.success(t('imageUploaderCopy')); // Use translation key
+  const copyToClipboard = useCallback((urlToCopy: string) => {
+    if (urlToCopy) {
+      navigator.clipboard.writeText(urlToCopy);
+      toast.success(t('imageUploaderCopy'));
     }
-  }, [uploadedImageUrl, t]); // Add t to dependency array
+  }, [t]);
 
   const handlePathChange = (path: string) => {
     onPathChange(path);
@@ -237,6 +283,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
             <Input
               type="file"
               accept="image/*"
+              multiple // Allow multiple file selection
               onChange={handleFileChange}
               className="mb-4"
               disabled={!!connectionError}
@@ -275,26 +322,31 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
             </Button>
           </div>
           
-          {uploadedImageUrl && (
+          {uploadedImageUrls.length > 0 && (
             <div className="mt-6 space-y-4">
-              <h3 className="font-medium">{t('imageUploaderUploadedImageUrl')}</h3>
-              <div className="flex items-center space-x-2">
-                <Input
-                  value={uploadedImageUrl}
-                  readOnly
-                  className="flex-1"
-                />
-                <Button onClick={copyToClipboard} variant="outline">
-                  {t('imageUploaderCopy')}
-                </Button>
-              </div>
-              <div className="mt-2">
-                <img
-                  src={uploadedImageUrl}
-                  alt="Uploaded"
-                  className="max-h-64 max-w-full rounded-lg"
-                />
-              </div>
+              <h3 className="font-medium">{t('imageUploaderUploadedImageUrls')}</h3>
+              {uploadedImageUrls.map((url, index) => (
+                <div key={index} className="flex items-center space-x-2">
+                  <Input
+                    value={url}
+                    readOnly
+                    className="flex-1"
+                  />
+                  <Button onClick={() => copyToClipboard(url)} variant="outline">
+                    {t('imageUploaderCopy')}
+                  </Button>
+                </div>
+              ))}
+              {/* Optionally, show a preview of the first uploaded image if desired */}
+              {uploadedImageUrls[0] && (
+                <div className="mt-2">
+                  <img
+                    src={uploadedImageUrls[0]}
+                    alt="Uploaded Preview"
+                    className="max-h-64 max-w-full rounded-lg"
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

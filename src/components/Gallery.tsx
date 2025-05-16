@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react"; // Added useRef
 import { AlistService, FileInfo } from "@/services/alistService";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import Autoplay from "embla-carousel-autoplay"; // Import Autoplay plugin
 import ReactPlayer from 'react-player'; // Import ReactPlayer
 import { useTranslation } from 'react-i18next'; // Import useTranslation
 
@@ -693,7 +694,18 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
        {files.filter(isImageFile).length > 0 && (
          <div className="mt-8">
            <h3 className="text-lg font-semibold mb-4">{t('galleryImageCarousel')}</h3> {/* Use translation key */}
-           <Carousel className="w-full">
+           <Carousel
+             className="w-full"
+             plugins={[
+               Autoplay({
+                 delay: 10000, // 10 seconds
+                 stopOnInteraction: true, // Optional: stop autoplay on user interaction
+               }),
+             ]}
+             opts={{
+               loop: true, // Optional: loop the carousel
+             }}
+           >
              <CarouselContent>
                {files.filter(isImageFile).map((file) => (
                  <CarouselItem key={file.name} className="md:basis-1/2 lg:basis-1/3">
