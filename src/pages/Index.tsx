@@ -14,6 +14,7 @@ const Index = () => {
   const [username, setUsername] = useState<string>(localStorage.getItem("alist_username") || "");
   const [password, setPassword] = useState<string>(localStorage.getItem("alist_password") || "");
   const [serverUrl, setServerUrl] = useState<string>(localStorage.getItem("alist_server_url") || "");
+  const [r2CustomDomain, setR2CustomDomain] = useState<string>(localStorage.getItem("alist_r2_custom_domain") || ""); // New state
   const [path, setPath] = useState<string>("/");
   const [activeTab, setActiveTab] = useState<string>("upload");
   const [connectionVerified, setConnectionVerified] = useState<boolean>(false);
@@ -57,11 +58,12 @@ const Index = () => {
       }
 
       if (currentAuthDetails) {
-        return new AlistService(currentAuthDetails, serverUrl);
+        // Pass r2CustomDomain to AlistService constructor
+        return new AlistService(currentAuthDetails, serverUrl, r2CustomDomain);
       }
     }
     return null;
-  }, [token, username, password, serverUrl, authMethod]);
+  }, [token, username, password, serverUrl, authMethod, r2CustomDomain]); // Added r2CustomDomain
 
   useEffect(() => {
     // Update localStorage whenever auth details or server URL change
@@ -76,11 +78,17 @@ const Index = () => {
         localStorage.removeItem("alist_token");
       }
       localStorage.setItem("alist_server_url", serverUrl);
+      if (r2CustomDomain) {
+        localStorage.setItem("alist_r2_custom_domain", r2CustomDomain);
+      } else {
+        localStorage.removeItem("alist_r2_custom_domain");
+      }
     } else {
       localStorage.removeItem("alist_token");
       localStorage.removeItem("alist_username");
       localStorage.removeItem("alist_password");
       localStorage.removeItem("alist_server_url");
+      localStorage.removeItem("alist_r2_custom_domain");
     }
 
     // Test connection whenever alistService instance changes
@@ -100,13 +108,15 @@ const Index = () => {
     } else {
       setConnectionVerified(false);
     }
-  }, [alistService, token, username, password, serverUrl, authMethod, t]); // Added alistService to dependencies
+  }, [alistService, token, username, password, serverUrl, authMethod, r2CustomDomain, t]); // Added r2CustomDomain
 
   const handleConnectionSubmit = (
     authDetails: { token: string } | { username?: string; password?: string },
-    newServerUrl: string
+    newServerUrl: string,
+    newR2CustomDomain?: string // New parameter
   ) => {
     setServerUrl(newServerUrl);
+    setR2CustomDomain(newR2CustomDomain || ""); // Set new R2 custom domain
     if ("token" in authDetails) {
       setToken(authDetails.token);
       setUsername(""); // Clear other auth method
@@ -143,6 +153,7 @@ const Index = () => {
             initialServerUrl={serverUrl}
             initialUsername={username}
             initialPassword={password}
+            initialR2CustomDomain={r2CustomDomain} // Pass initialR2CustomDomain
             onSubmit={handleConnectionSubmit}
             isUpdate={!!((token || username) && serverUrl)} // Show as update if any credential exists
           />
@@ -182,6 +193,7 @@ const Index = () => {
                 initialServerUrl={serverUrl}
                 initialUsername={username}
                 initialPassword={password}
+                initialR2CustomDomain={r2CustomDomain} // Pass initialR2CustomDomain
                 onSubmit={handleConnectionSubmit}
                 isUpdate={true}
               />

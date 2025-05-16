@@ -43,6 +43,9 @@
   "tokenInputServerUrlLabel": "AList Server URL",
   "tokenInputServerUrlPlaceholder": "https://your-alist-server.com",
   "tokenInputServerUrlHint": "Example: your-alist-server.com (https:// will be added automatically if missing)",
+  "tokenInputR2CustomDomainLabel": "R2 Custom Domain (Optional)",
+  "tokenInputR2CustomDomainPlaceholder": "e.g., https://s3.yourdomain.com",
+  "tokenInputR2CustomDomainHint": "If you use a custom domain for R2 object storage previews.",
   "tokenInputTokenLabel": "AList Token",
   "tokenInputTokenPlaceholder": "Enter your AList token",
   "tokenInputTokenHint": "Get your token from AList admin dashboard: Settings → Other → Token",
@@ -96,5 +99,12 @@
   "galleryPasswordDialogSubmitButton": "Submit",
   "galleryPasswordIncorrectOrNoPermission": "Incorrect password or no permission.",
   "galleryPasswordPossiblyRequired": "This directory may require a password.",
-  "galleryPasswordOrPathInvalid": "Incorrect password, or path does not exist / requires a password."
+  "galleryPasswordOrPathInvalid": "Incorrect password, or path does not exist / requires a password.",
+  "galleryErrorLoadingPreview": "Error loading preview.",
+  "galleryTryOpeningDirectly": "Try opening directly",
+  "galleryErrorNoLinkToCopy": "Error: No link available to copy.",
+  "copyPreviewLinkButton": "Copy Preview Link",
+  "zoomOutButton": "Zoom Out",
+  "zoomInButton": "Zoom In",
+  "tokenInputGuestConnectButton": "Guest Upload"
 }

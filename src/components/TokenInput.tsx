@@ -15,10 +15,12 @@ interface TokenInputProps {
   initialServerUrl?: string;
   initialUsername?: string;
   initialPassword?: string;
+  initialR2CustomDomain?: string; // New prop
   isUpdate?: boolean;
   onSubmit: (
     authDetails: { token: string } | { username?: string; password?: string },
-    serverUrl: string
+    serverUrl: string,
+    r2CustomDomain?: string // New parameter in onSubmit
   ) => void;
 }
 
@@ -29,6 +31,7 @@ const TokenInput: React.FC<TokenInputProps> = ({
   initialServerUrl = "",
   initialUsername = "",
   initialPassword = "",
+  initialR2CustomDomain = "", // Initialize new prop
   isUpdate = false,
   onSubmit,
 }) => {
@@ -37,8 +40,10 @@ const TokenInput: React.FC<TokenInputProps> = ({
   const [serverUrl, setServerUrl] = useState<string>(initialServerUrl);
   const [username, setUsername] = useState<string>(initialUsername);
   const [password, setPassword] = useState<string>(initialPassword);
+  const [r2CustomDomain, setR2CustomDomain] = useState<string>(initialR2CustomDomain); // New state
   const [authMode, setAuthMode] = useState<AuthMode>("token");
   const [isValidating, setIsValidating] = useState<boolean>(false);
+  const [isGuestConnecting, setIsGuestConnecting] = useState<boolean>(false); // New state for guest button loading
   const [error, setError] = useState<string | null>(null);
   const [detailedError, setDetailedError] = useState<string | null>(null);
 
@@ -103,7 +108,7 @@ const TokenInput: React.FC<TokenInputProps> = ({
       const isValid = await serviceToTest.testConnection();
 
       if (isValid) {
-        onSubmit(authDetails, urlWithProtocol);
+        onSubmit(authDetails, urlWithProtocol, r2CustomDomain.trim()); // Pass r2CustomDomain
         toast.success(t("tokenInputConnectionSuccessful"));
       } else {
         const errorMsg = t("tokenInputConnectionFailed");
@@ -119,6 +124,35 @@ const TokenInput: React.FC<TokenInputProps> = ({
       setIsValidating(false);
     }
   };
+
+  const handleGuestConnect = async () => {
+    setError(null);
+    setDetailedError(null);
+    setIsGuestConnecting(true); // Start guest button loading
+
+    const guestServerUrl = "https://pan.arikacips.cyou";
+    const guestUsername = "test";
+    const guestPassword = "test";
+
+    try {
+      // Call the onSubmit prop with guest credentials directly
+      // Do NOT set the input field states to maintain privacy
+      await onSubmit({ username: guestUsername, password: guestPassword }, guestServerUrl, "");
+
+      // onSubmit will handle success toast and state updates
+    } catch (error: any) {
+      // onSubmit should handle most errors and display toasts
+      // This catch is for unexpected errors during the process before onSubmit is fully handled
+      console.error("Error during guest connection process:", error);
+      const errorMsg = `${t("tokenInputConnectionFailedGeneric")} ${error.message || t("imageUploaderUnknownLoadingError")}`;
+      setError(errorMsg);
+      setDetailedError(`${t("tokenInputErrorDetails")} ${JSON.stringify(error, null, 2)}`);
+      toast.error(errorMsg);
+    } finally {
+      setIsGuestConnecting(false); // Stop guest button loading
+    }
+  };
+
 
   // Try to fix potential token format issues
   const handleTokenChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -164,6 +198,18 @@ const TokenInput: React.FC<TokenInputProps> = ({
                 disabled={isValidating}
               />
               <p className="text-xs text-gray-500">{t("tokenInputServerUrlHint")}</p>
+            </div>
+
+            <div className="flex flex-col space-y-1.5">
+              <Label htmlFor="r2CustomDomain">{t("tokenInputR2CustomDomainLabel")}</Label>
+              <Input
+                id="r2CustomDomain"
+                placeholder={t("tokenInputR2CustomDomainPlaceholder")}
+                value={r2CustomDomain}
+                onChange={(e) => setR2CustomDomain(e.target.value)}
+                disabled={isValidating}
+              />
+              <p className="text-xs text-gray-500">{t("tokenInputR2CustomDomainHint")}</p>
             </div>
 
             <div className="flex flex-col space-y-1.5">
@@ -232,8 +278,8 @@ const TokenInput: React.FC<TokenInputProps> = ({
             )}
           </div>
         </CardContent>
-        <CardFooter>
-          <Button type="submit" disabled={isValidating}>
+        <CardFooter className="flex justify-between"> {/* Use flex and justify-between for button spacing */}
+          <Button type="submit" disabled={isValidating || isGuestConnecting}> {/* Disable if either is loading */}
             {isValidating ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -243,6 +289,27 @@ const TokenInput: React.FC<TokenInputProps> = ({
               t("tokenInputUpdateButton")
             ) : (
               t("tokenInputConnectButton")
+            )}
+          </Button>
+          <Button
+            type="button" // Important: prevent form submission
+            variant={
+              initialServerUrl === "https://pan.arikacips.cyou" &&
+              initialUsername === "test" &&
+              initialPassword === "test"
+                ? "default" // Black variant when guest mode is active
+                : "outline" // Default outline variant
+            }
+            onClick={handleGuestConnect}
+            disabled={isValidating || isGuestConnecting} // Disable if either is loading
+          >
+            {isGuestConnecting ? (
+               <>
+                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                 {t("tokenInputConnecting")} {/* Reuse connecting text for guest */}
+               </>
+            ) : (
+              t("tokenInputGuestConnectButton")
             )}
           </Button>
         </CardFooter>

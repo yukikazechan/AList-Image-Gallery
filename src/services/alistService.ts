@@ -1,5 +1,5 @@
 
-import axios, { AxiosInstance } from "axios";
+import axios from "axios";
 
 export interface FileInfo {
   name: string;
@@ -20,17 +20,22 @@ export interface ListResponse {
 }
 
 export class AlistService {
-  private client: AxiosInstance;
+  private client; // Let TypeScript infer the type from axios.create()
   private baseUrl: string;
   private token?: string;
   private username?: string;
   private password?: string;
+  private r2CustomDomain?: string; // New private member
 
   constructor(
     authDetails: { token: string } | { username?: string; password?: string },
-    baseUrl: string = ""
+    baseUrl: string = "",
+    r2CustomDomain?: string // New optional parameter
   ) {
     this.baseUrl = baseUrl.trim();
+    this.r2CustomDomain = r2CustomDomain?.trim().endsWith('/')
+      ? r2CustomDomain.trim().slice(0, -1)
+      : r2CustomDomain?.trim();
     if ("token" in authDetails) {
       this.token = authDetails.token.trim();
     } else {
@@ -248,13 +253,43 @@ export class AlistService {
       
       if (response.data && response.data.code === 200 && response.data.data && response.data.data.raw_url) {
         let rawUrl = response.data.data.raw_url;
-        if (typeof window !== 'undefined') {
+        // Protocol normalization
+        if (rawUrl.includes("sharepoint.com")) {
+          // For SharePoint links, ensure HTTPS
+          if (rawUrl.startsWith("http:")) {
+            rawUrl = rawUrl.replace(/^http:/, "https:");
+          }
+        } else if (typeof window !== 'undefined') {
+          // Apply original protocol normalization for non-SharePoint URLs
           if (window.location.protocol === 'https:') {
             rawUrl = rawUrl.replace(/^http:/, 'https:');
           } else if (window.location.protocol === 'http:') {
             rawUrl = rawUrl.replace(/^https:/, 'http:');
           }
         }
+
+        // R2 Link Transformation
+        if (rawUrl.includes(".r2.cloudflarestorage.com")) {
+          try {
+            const urlObject = new URL(rawUrl);
+            const pathname = urlObject.pathname; // Should be like "/filename.ext"
+            if (pathname && this.r2CustomDomain) { // Check if r2CustomDomain is set
+              const filename = pathname.substring(1); // Remove leading '/'
+              const newR2Url = `${this.r2CustomDomain}/${filename}`;
+              console.log(`R2 URL transformed: ${rawUrl} -> ${newR2Url}`);
+              return newR2Url; // Return the new R2 URL
+            } else if (pathname && !this.r2CustomDomain) {
+              console.log("R2 link detected, but no custom domain configured. Returning original R2 link.");
+            }
+          } catch (e) {
+            console.error("Error parsing R2 URL for transformation:", e);
+            // Fall through to return original rawUrl if parsing fails
+          }
+        }
+        // End of R2 Link Transformation
+
+        // No more SharePoint specific URL transformations here for web=1 or embed.aspx,
+        // as that will be handled by fetching the blob in the component for SharePoint.
         return rawUrl;
       } else {
         console.log('Response structure for file link (getFileLink):', JSON.stringify(response.data));

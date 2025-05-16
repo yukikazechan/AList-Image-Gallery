@@ -45,9 +45,11 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const { t } = useTranslation(); // Initialize useTranslation
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null); // This will hold the blob URL for preview
+  const [originalFileUrl, setOriginalFileUrl] = useState<string | null>(null); // This will hold the direct URL from AList
   const [currentFile, setCurrentFile] = useState<FileInfo | null>(null);
   const [showFullImage, setShowFullImage] = useState<boolean>(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
 
   const [showPasswordDialog, setShowPasswordDialog] = useState<boolean>(false);
   const [passwordPromptPath, setPasswordPromptPath] = useState<string>("");
@@ -129,7 +131,14 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     } else {
       setFiles([]); // Clear files if service becomes null
     }
-  }, [alistService, path, loadFiles]); // Added alistService and path to dependencies
+
+    // Cleanup blob URL when component unmounts or currentImageUrl changes
+    return () => {
+      if (currentImageUrl && currentImageUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(currentImageUrl);
+      }
+    };
+  }, [alistService, path, loadFiles, currentImageUrl]); // Added currentImageUrl
 
   const handlePasswordSubmit = () => {
     if (!passwordPromptPath || !currentPasswordInput) return;
@@ -151,13 +160,71 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
 
   const handleViewImage = async (file: FileInfo) => {
     if (!alistService) return;
+    setIsPreviewLoading(true);
+    setCurrentFile(file); // Save the current file info early
+
+    // Revoke previous blob URL if it exists
+    if (currentImageUrl && currentImageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(currentImageUrl);
+      setCurrentImageUrl(null);
+    }
+    setOriginalFileUrl(null);
+
 
     try {
-      const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
-      setCurrentImageUrl(fileUrl);
-      setCurrentFile(file); // Save the current file info
-    } catch (error: any) {
-      toast.error(`${t('galleryErrorGettingImageLink')} ${error.message || t('galleryUnknownError')}`); // Use translation key
+      const directUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
+      setOriginalFileUrl(directUrl); // Store the original direct URL
+
+      // Attempt to fetch all image types (including AVIF from R2 or other sources) as blob
+      try {
+        const response = await fetch(directUrl);
+        if (!response.ok) {
+          // If fetching as blob fails (e.g. CORS, network issue, 403),
+          // fall back to using the direct URL for preview.
+          // This might still trigger a download for some providers if the direct URL itself does.
+          console.warn(`Failed to fetch image as blob (${response.status} ${response.statusText}), falling back to direct URL for: ${directUrl}`);
+          setCurrentImageUrl(directUrl);
+        } else {
+          const blob = await response.blob();
+          let typedBlob = blob;
+          const fileExtension = file.name.split('.').pop()?.toLowerCase();
+          const correctMimeType = getMimeType(fileExtension); // Helper function to get correct MIME type
+
+          console.log(`Original blob type for ${file.name}: ${blob.type}`); // Log original type
+
+          // Check if the blob type is not a standard image type and we can determine the correct MIME type from extension
+          if (!blob.type.startsWith('image/') && correctMimeType) {
+            try {
+              typedBlob = new Blob([blob], { type: correctMimeType }); // Corrected typo
+              console.log(`Created new blob with type ${correctMimeType} for`, file.name);
+            } catch (blobError) {
+              console.error("Error creating typed blob:", blobError);
+              // Fallback to original blob if creating typed blob fails
+              typedBlob = blob;
+            }
+          } else if (!blob.type.startsWith('image/')) {
+             // Log a warning for other non-image types where we couldn't determine the correct type
+             console.warn(`Fetched blob with non-image type: ${blob.type} for file: ${file.name}, could not determine correct type from extension.`);
+          }
+          console.log(`Blob type before creating URL for ${file.name}: ${typedBlob.type}`); // Log type before creating URL
+
+
+          const blobUrl = URL.createObjectURL(typedBlob);
+          setCurrentImageUrl(blobUrl);
+        }
+      } catch (fetchError: any) {
+        // Catch fetch-specific errors (e.g., network errors, CORS rejections before response status)
+        // Only log a warning here, as we are falling back to directUrl.
+        // The toast error for "galleryErrorGettingImageLink" will be shown by the outer catch if directUrl also fails to load via <img>.
+        console.warn(`Error fetching image for blob: ${fetchError.message}. Falling back to direct URL: ${directUrl}`);
+        setCurrentImageUrl(directUrl); // Fallback to direct URL on fetch error
+      }
+    } catch (error: any) { // Catch errors from alistService.getFileLink itself, or other unexpected errors in the primary try block
+      toast.error(`${t('galleryErrorGettingImageLink')} ${error.message || t('galleryUnknownError')}`);
+      setCurrentImageUrl(null); // Clear image on error
+      setOriginalFileUrl(null);
+    } finally {
+      setIsPreviewLoading(false);
     }
   };
 
@@ -165,8 +232,14 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     if (!alistService) return;
 
     try {
-      const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
-      await navigator.clipboard.writeText(fileUrl);
+      // Use originalFileUrl if available (meaning preview was opened), otherwise fetch it.
+      let urlToCopy = originalFileUrl;
+      if (currentFile === file && originalFileUrl) {
+         urlToCopy = originalFileUrl;
+      } else {
+        urlToCopy = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
+      }
+      await navigator.clipboard.writeText(urlToCopy);
       toast.success(t('imageLinkCopied'));
     } catch (error: any) {
       toast.error(`${t('galleryErrorCopyingLink')} ${error.message || t('galleryUnknownError')}`);
@@ -177,8 +250,13 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const handleCopyMarkdownLink = async (file: FileInfo) => {
     if (!alistService) return;
     try {
-      const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
-      const markdownLink = `![${file.name}](${fileUrl})`;
+      let urlToCopy = originalFileUrl;
+      if (currentFile === file && originalFileUrl) {
+         urlToCopy = originalFileUrl;
+      } else {
+        urlToCopy = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
+      }
+      const markdownLink = `![${file.name}](${urlToCopy})`;
       await navigator.clipboard.writeText(markdownLink);
       toast.success(t('markdownLinkCopied'));
     } catch (error: any) {
@@ -190,8 +268,13 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const handleCopyHtmlLink = async (file: FileInfo) => {
     if (!alistService) return;
     try {
-      const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
-      const htmlLink = `<img src="${fileUrl}" alt="${file.name}">`;
+      let urlToCopy = originalFileUrl;
+      if (currentFile === file && originalFileUrl) {
+         urlToCopy = originalFileUrl;
+      } else {
+        urlToCopy = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
+      }
+      const htmlLink = `<img src="${urlToCopy}" alt="${file.name}">`;
       await navigator.clipboard.writeText(htmlLink);
       toast.success(t('htmlLinkCopied'));
     } catch (error: any) {
@@ -203,8 +286,13 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const handleCopyUbbLink = async (file: FileInfo) => {
     if (!alistService) return;
     try {
-      const fileUrl = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
-      const ubbLink = `[img]${fileUrl}[/img]`;
+      let urlToCopy = originalFileUrl;
+      if (currentFile === file && originalFileUrl) {
+         urlToCopy = originalFileUrl;
+      } else {
+        urlToCopy = await alistService.getFileLink(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`);
+      }
+      const ubbLink = `[img]${urlToCopy}[/img]`;
       await navigator.clipboard.writeText(ubbLink);
       toast.success(t('ubbLinkCopied'));
     } catch (error: any) {
@@ -249,8 +337,31 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     onPathChange(newPath);
   };
 
-  const isImageFile = (file: FileInfo) => !file.is_dir && file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif)$/i);
+  // Helper function to determine MIME type based on file extension
+  const getMimeType = (fileExtension?: string): string | undefined => {
+    if (!fileExtension) return undefined;
+    switch (fileExtension) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'bmp':
+        return 'image/bmp';
+      case 'avif':
+        return 'image/avif';
+      // Add other image types if needed
+      default:
+        return undefined;
+    }
+  };
 
+  const isImageFile = (file: FileInfo) => !file.is_dir && file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif)$/i);
+ 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -488,33 +599,91 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
 
        {/* Full screen preview - Needs update for video */}
        {/* Full screen preview - Updated for video */}
-       {currentFile && currentImageUrl && (
+       {(currentFile && (currentImageUrl || isPreviewLoading)) && (
          <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4"
-              onClick={() => setCurrentFile(null)}> {/* Close on clicking outside */}
+              onClick={() => {
+                setCurrentFile(null);
+                if (currentImageUrl && currentImageUrl.startsWith('blob:')) {
+                  URL.revokeObjectURL(currentImageUrl);
+                }
+                setCurrentImageUrl(null);
+                setOriginalFileUrl(null);
+              }}> {/* Close on clicking outside */}
+           {/* Dialog content container: overflow-hidden to manage overall dialog scroll, max-h for viewport fitting */}
            <div className="relative bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-hidden"
                 onClick={(e) => e.stopPropagation()}> {/* Prevent closing when clicking inside */}
+             {/* Header */}
              <div className="p-4 flex justify-between items-center border-b">
-               <h3 className="font-medium">{t('galleryImagePreview')}</h3> {/* Use translation key */}
-               <Button variant="ghost" size="sm" onClick={() => setCurrentFile(null)}>
+               <h3 className="font-medium">{currentFile?.name || t('galleryImagePreview')}</h3> {/* Use translation key */}
+               <Button variant="ghost" size="sm" onClick={() => {
+                 setCurrentFile(null);
+                 if (currentImageUrl && currentImageUrl.startsWith('blob:')) {
+                   URL.revokeObjectURL(currentImageUrl);
+                 }
+                 setCurrentImageUrl(null);
+                 setOriginalFileUrl(null);
+               }}>
                  {t('galleryClose')} {/* Use translation key */}
                </Button>
              </div>
-             <div className="p-4 overflow-auto" style={{maxHeight: 'calc(90vh - 60px)'}}>
-               <img
-                 src={currentImageUrl}
-                 alt="Preview"
-                 className={showFullImage ? '' : 'max-w-full max-h-[70vh]'}
-                 style={{cursor: showFullImage ? 'zoom-out' : 'zoom-in'}}
-                 onClick={() => setShowFullImage(!showFullImage)}
-               />
+             {/* Image Container: overflow-auto for scrolling, dynamic maxHeight */}
+             <div
+                className={`p-4 ${showFullImage ? 'overflow-auto' : 'flex items-center justify-center'}`} // Apply overflow-auto only when zoomed, apply centering when not zoomed
+                style={{
+                  maxHeight: 'calc(90vh - 120px)', // Keep fixed maxHeight for scrolling within viewport
+                  width: showFullImage ? 'auto' : '800px', // Set fixed width when not zoomed
+                  height: showFullImage ? 'auto' : '1000px', // Set fixed height when not zoomed
+                  overflow: showFullImage ? 'auto' : 'hidden' // Set overflow hidden when not zoomed
+                }}
+             >
+              {isPreviewLoading && (
+                <Loader2 className="h-16 w-16 animate-spin text-gray-500" />
+              )}
+              {!isPreviewLoading && currentImageUrl && (
+                <img
+                  src={currentImageUrl}
+                  alt={currentFile?.name || "Preview"}
+                  className={`${showFullImage ? 'cursor-zoom-out' : 'cursor-zoom-in object-contain'}`} // Apply object-contain when not zoomed
+                  style={{
+                    display: isPreviewLoading ? 'none' : 'block',
+                    maxWidth: showFullImage ? 'none' : '100%', // Allow original size when zoomed, limit to container when not zoomed
+                    maxHeight: showFullImage ? 'none' : '100%', // Allow original size when zoomed, limit to container when not zoomed
+                    width: showFullImage ? 'auto' : 'auto', // Allow original width when zoomed, auto when not zoomed
+                    height: showFullImage ? 'auto' : 'auto', // Allow original height when zoomed, auto when not zoomed
+                  }}
+                  onClick={() => setShowFullImage(!showFullImage)}
+                  onError={(e) => {
+                    e.currentTarget.src = '/placeholder.svg'; // Fallback for blob load error
+                    toast.error(t('galleryErrorLoadingPreview'));
+                  }}
+                />
+              )}
+              {!isPreviewLoading && !currentImageUrl && currentFile && (
+                 <div className="text-center text-red-500">
+                   <p>{t('galleryErrorLoadingPreview')}</p>
+                   {originalFileUrl && (
+                      <a href={originalFileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
+                        {t('galleryTryOpeningDirectly')}
+                      </a>
+                   )}
+                 </div>
+              )}
              </div>
-             <div className="p-4 border-t">
+             {/* Footer */}
+             <div className="p-2 border-t flex justify-between items-center">
                <Button onClick={() => {
-                 navigator.clipboard.writeText(currentImageUrl);
-                 toast.success(t('mediaUrlCopied'));
+                 if (currentImageUrl) { // Now copies the currentImageUrl (blob or direct)
+                   navigator.clipboard.writeText(currentImageUrl);
+                   toast.success(t('imageLinkCopied'));
+                 } else {
+                   toast.error(t('galleryErrorNoLinkToCopy'));
+                 }
                }}>
-                 {t('mediaUrlCopied')}
+                 {t('copyPreviewLinkButton')} {/* Changed translation key */}
                </Button>
+                <Button onClick={() => setShowFullImage(!showFullImage)} disabled={!currentImageUrl || isPreviewLoading}>
+                  {showFullImage ? t('zoomOutButton') : t('zoomInButton')} {/* New translation keys */}
+                </Button>
              </div>
            </div>
          </div>
