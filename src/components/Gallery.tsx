@@ -611,11 +611,11 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
                 setOriginalFileUrl(null);
               }}> {/* Close on clicking outside */}
            {/* Dialog content container: overflow-hidden to manage overall dialog scroll, max-h for viewport fitting */}
-           <div className="relative bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-hidden"
+           <div className="relative bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 rounded-lg max-w-4xl max-h-[90vh] overflow-hidden"
                 onClick={(e) => e.stopPropagation()}> {/* Prevent closing when clicking inside */}
              {/* Header */}
-             <div className="p-4 flex justify-between items-center border-b">
-               <h3 className="font-medium">{currentFile?.name || t('galleryImagePreview')}</h3> {/* Use translation key */}
+             <div className="p-4 flex justify-between items-center border-b border-slate-200 dark:border-slate-700">
+               <h3 className="font-medium">{currentFile?.name || t('galleryImagePreview')}</h3> {/* Text color will be inherited */}
                <Button variant="ghost" size="sm" onClick={() => {
                  setCurrentFile(null);
                  if (currentImageUrl && currentImageUrl.startsWith('blob:')) {
@@ -631,14 +631,14 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
              <div
                 className={`p-4 ${showFullImage ? 'overflow-auto' : 'flex items-center justify-center'}`} // Apply overflow-auto only when zoomed, apply centering when not zoomed
                 style={{
-                  maxHeight: 'calc(90vh - 120px)', // Keep fixed maxHeight for scrolling within viewport
-                  width: showFullImage ? 'auto' : '800px', // Set fixed width when not zoomed
-                  height: showFullImage ? 'auto' : '1000px', // Set fixed height when not zoomed
-                  overflow: showFullImage ? 'auto' : 'hidden' // Set overflow hidden when not zoomed
+                  maxHeight: 'calc(90vh - 120px)',
+                  width: showFullImage ? 'auto' : '100%', // Allow container to take full available width in modal
+                  height: showFullImage ? 'auto' : 'auto', // Let content and maxHeight determine height
+                  overflow: showFullImage ? 'auto' : 'hidden'
                 }}
              >
               {isPreviewLoading && (
-                <Loader2 className="h-16 w-16 animate-spin text-gray-500" />
+                <Loader2 className="h-16 w-16 animate-spin text-gray-500 dark:text-gray-400" />
               )}
               {!isPreviewLoading && currentImageUrl && (
                 <img
@@ -660,18 +660,18 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
                 />
               )}
               {!isPreviewLoading && !currentImageUrl && currentFile && (
-                 <div className="text-center text-red-500">
+                 <div className="text-center text-red-500 dark:text-red-400">
                    <p>{t('galleryErrorLoadingPreview')}</p>
                    {originalFileUrl && (
-                      <a href={originalFileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
-                        {t('galleryTryOpeningDirectly')}
-                      </a>
+                     <a href={originalFileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 dark:text-blue-400 underline">
+                       {t('galleryTryOpeningDirectly')}
+                     </a>
                    )}
                  </div>
               )}
              </div>
              {/* Footer */}
-             <div className="p-2 border-t flex justify-between items-center">
+             <div className="p-2 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
                <Button onClick={() => {
                  if (currentImageUrl) { // Now copies the currentImageUrl (blob or direct)
                    navigator.clipboard.writeText(currentImageUrl);

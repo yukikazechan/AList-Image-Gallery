@@ -115,5 +115,7 @@
   "copyPreviewLinkButton": "复制预览链接",
   "zoomOutButton": "缩小",
   "zoomInButton": "放大",
-  "tokenInputGuestConnectButton": "游客上传"
+  "tokenInputGuestConnectButton": "游客上传",
+  "switchToLightMode": "切换到浅色模式",
+  "switchToDarkMode": "切换到深色模式"
 }

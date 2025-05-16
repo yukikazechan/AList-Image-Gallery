@@ -7,6 +7,7 @@ import ImageUploader from "@/components/ImageUploader";
 import Gallery from "@/components/Gallery";
 import { AlistService } from "@/services/alistService";
 import { useTranslation } from 'react-i18next'; // Import useTranslation
+import { ThemeToggleButton } from "@/components/ThemeToggleButton"; // Import ThemeToggleButton
 
 const Index = () => {
   const { t } = useTranslation(); // Initialize useTranslation
@@ -142,11 +143,14 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 text-slate-900 dark:text-slate-50 p-4"> {/* Added dark mode background and text colors */}
       <div className="container max-w-4xl mx-auto">
-        <header className="mb-8 text-center">
+        <header className="mb-8 text-center relative"> {/* Added relative for positioning button */}
           <h1 className="text-3xl font-bold text-purple-700 mb-2">{t("appName")}</h1> {/* Use translation key */}
           <p className="text-gray-600">{t("appDescription")}</p> {/* Use translation key */}
+          <div className="absolute top-0 right-0"> {/* Position button top right of header */}
+            <ThemeToggleButton />
+          </div>
         </header>
 
         {!connectionVerified && (

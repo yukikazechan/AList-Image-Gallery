@@ -279,7 +279,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
+          <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-lg p-6 bg-gray-50 dark:bg-slate-800"> {/* Dark mode styles added */}
             <Input
               type="file"
               accept="image/*"
@@ -290,7 +290,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
             />
             
             {(!files || files.length === 0) && (
-              <p className="text-sm text-gray-500 mt-2">{t('imageUploaderNoFileSelected')}</p>
+              <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">{t('imageUploaderNoFileSelected')}</p>
             )}
 
             {imagePreviewUrl && (

@@ -115,5 +115,7 @@
   "copyPreviewLinkButton": "Copy Preview Link",
   "zoomOutButton": "Zoom Out",
   "zoomInButton": "Zoom In",
-  "tokenInputGuestConnectButton": "Guest Upload"
+  "tokenInputGuestConnectButton": "Guest Upload",
+  "switchToLightMode": "Switch to Light Mode",
+  "switchToDarkMode": "Switch to Dark Mode"
 }
