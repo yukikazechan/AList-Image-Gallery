@@ -96,7 +96,9 @@ const Index = () => {
       alistService.testConnection()
         .then(isValid => {
           setConnectionVerified(isValid);
-          if (!isValid) {
+          if (isValid) {
+            setActiveTab("upload"); // Always set active tab to upload on any successful connection
+          } else {
             toast.error(t("connectionError"));
           }
         })
