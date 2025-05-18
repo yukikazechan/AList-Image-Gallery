@@ -74,9 +74,8 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const [selectedFilePaths, setSelectedFilePaths] = useState<string[]>([]);
   const [showMultiShareEncryptDialog, setShowMultiShareEncryptDialog] = useState<boolean>(false);
   const [multiShareEncryptionPassword, setMultiShareEncryptionPassword] = useState<string>("");
-  const [imagePathsForGalleryShare, setImagePathsForGalleryShare] = useState<string[]>([]); // For resolved image paths
-  const [isResolvingPaths, setIsResolvingPaths] = useState<boolean>(false); // Loading state for path resolution
-
+  const [imagePathsForGalleryShare, setImagePathsForGalleryShare] = useState<string[]>([]);
+  const [isResolvingPaths, setIsResolvingPaths] = useState<boolean>(false);
 
   const isImageFile = useCallback((file: FileInfo) => !file.is_dir && file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif)$/i), []);
   
@@ -126,18 +125,65 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     else { handleViewImage(file); }
   };
   
-  const getMimeType = useCallback((fileExtension?: string): string | undefined => { /* ... as before ... */ return undefined; }, []);
+  const getMimeType = useCallback((fileExtension?: string): string | undefined => {
+    if (!fileExtension) return undefined;
+    switch (fileExtension) {
+      case 'jpg': case 'jpeg': return 'image/jpeg'; case 'png': return 'image/png';
+      case 'gif': return 'image/gif'; case 'webp': return 'image/webp';
+      case 'bmp': return 'image/bmp'; case 'avif': return 'image/avif';
+      default: return undefined;
+    }
+  }, []);
 
-  const handleViewImage = async (file: FileInfo) => { /* ... as before ... */ };
-  const handleOpenEncryptShareDialog = (file: FileInfo) => { /* ... as before ... */ };
-  const getLocalStorageAlistConfig = () => ({ /* ... as before ... */ serverUrl: null, token: null, username: null, lsPassword: null, r2CustomDomain: undefined });
-  const handleCreateEncryptedShareLink = () => { /* ... as before ... */ };
+  const handleViewImage = async (file: FileInfo) => {
+    if (!alistService) return;
+    setIsPreviewLoading(true); setCurrentFile(file); 
+    if (currentImageUrl && currentImageUrl.startsWith('blob:')) { URL.revokeObjectURL(currentImageUrl); }
+    setCurrentImageUrl(null); setOriginalFileUrl(null);
+    try {
+      const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
+      const directUrl = await alistService.getFileLink(alistFilePath);
+      setOriginalFileUrl(directUrl); 
+      try {
+        const response = await fetch(directUrl);
+        if (!response.ok) { console.warn(`Failed to fetch image as blob (${response.status} ${response.statusText}), falling back to direct URL for: ${directUrl}`); setCurrentImageUrl(directUrl); } 
+        else {
+          const blob = await response.blob(); let typedBlob = blob;
+          const fileExtension = file.name.split('.').pop()?.toLowerCase();
+          const correctMimeType = getMimeType(fileExtension); 
+          if (!blob.type.startsWith('image/') && correctMimeType) { try { typedBlob = new Blob([blob], { type: correctMimeType }); } catch (blobError) { console.error("Error creating typed blob:", blobError); }}
+          const blobUrl = URL.createObjectURL(typedBlob); setCurrentImageUrl(blobUrl);
+        }
+      } catch (fetchError: any) { console.warn(`Error fetching image for blob: ${fetchError.message}. Falling back to direct URL: ${directUrl}`); setCurrentImageUrl(directUrl); }
+    } catch (error: any) { toast.error(`${t('galleryErrorGettingImageLink')} ${error.message || t('galleryUnknownError')}`); } 
+    finally { setIsPreviewLoading(false); }
+  };
+
+  const handleOpenEncryptShareDialog = (file: FileInfo) => { setFileToShare(file); setShareEncryptionPassword(""); setShowEncryptShareDialog(true); };
+
+  const handleCreateEncryptedShareLink = () => {
+    if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing', 'Alist service is not available.')); return; }
+    if (!fileToShare || !shareEncryptionPassword) { toast.error(t('galleryErrorPasswordForEncryption')); return; }
+    const serverUrl = alistService.getBaseUrl();
+    const token = alistService.getCurrentToken();
+    const r2CustomDomain = alistService.getR2CustomDomain();
+    if (!serverUrl) { toast.error(t('galleryErrorAlistConfigMissingForShare', 'Alist server URL is not configured (from service).')); return; }
+    let authDetailsToEncrypt: AuthDetails | null = token ? { token } : (alistService.getIsPublicClient() ? null : null);
+    const configToEncrypt: AlistConfigToShare = { serverUrl, authDetails: authDetailsToEncrypt, r2CustomDomain };
+    try {
+      const encryptedConfig = placeholderEncrypt(JSON.stringify(configToEncrypt), shareEncryptionPassword);
+      if (!encryptedConfig) { toast.error(t('galleryErrorEncryptionFailed')); return; }
+      const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${fileToShare.name}`;
+      const viewerLink = `${window.location.origin}/view?path=${encodeURIComponent(alistFilePath)}&c=${encodeURIComponent(encryptedConfig)}`;
+      navigator.clipboard.writeText(viewerLink); toast.success(t('galleryEncryptedLinkCopied')); toast.info(t('gallerySharePasswordReminder'));
+      setShowEncryptShareDialog(false); setFileToShare(null);
+    } catch (e:any) { console.error("Err creating encrypted link:", e); toast.error(`${t('galleryErrorCreatingEncryptedLink')} ${e.message}`); }
+  };
 
   const resolvePathsForGalleryShare = async (selectedPaths: string[]): Promise<string[]> => {
     if (!alistService) return [];
     setIsResolvingPaths(true);
     toast.info(t('galleryResolvingFolderPaths', 'Resolving folder contents for gallery...'));
-    
     const resolvedImagePaths: string[] = [];
     for (const selectedPath of selectedPaths) {
       const fileEntry = files.find(f => `${path}${path.endsWith('/') ? '' : '/'}${f.name}` === selectedPath);
@@ -148,43 +194,35 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
             dirContents.filter(isImageFile).forEach(imgFile => {
               resolvedImagePaths.push(`${selectedPath}${selectedPath.endsWith('/') ? '' : '/'}${imgFile.name}`);
             });
-          } catch (e) {
-            console.error(`Error listing contents of folder ${selectedPath}:`, e);
-            toast.error(t('galleryErrorListingFolderContents', { folderName: fileEntry.name }));
-          }
+          } catch (e) { console.error(`Error listing contents of folder ${selectedPath}:`, e); toast.error(t('galleryErrorListingFolderContents', { folderName: fileEntry.name })); }
         } else if (isImageFile(fileEntry)) {
           resolvedImagePaths.push(selectedPath);
         }
       }
     }
     setIsResolvingPaths(false);
-    if (resolvedImagePaths.length === 0 && selectedPaths.length > 0) {
-        toast.warning(t('galleryNoImagesFoundInSelection', 'No image files found in the selected items/folders.'));
-    }
-    return [...new Set(resolvedImagePaths)]; // Remove duplicates
+    if (resolvedImagePaths.length === 0 && selectedPaths.length > 0) { toast.warning(t('galleryNoImagesFoundInSelection')); }
+    return [...new Set(resolvedImagePaths)];
   };
 
   const handleOpenMultiShareDialog = async () => {
-    if (selectedFilePaths.length === 0) {
-      toast.info(t('galleryNoFilesSelectedForMultiShare'));
-      return;
-    }
+    if (selectedFilePaths.length === 0) { toast.info(t('galleryNoFilesSelectedForMultiShare')); return; }
     const resolvedPaths = await resolvePathsForGalleryShare(selectedFilePaths);
-    if (resolvedPaths.length === 0) {
-      // Warning already shown by resolvePathsForGalleryShare if selection was not empty
-      return;
-    }
+    if (resolvedPaths.length === 0 && selectedFilePaths.length > 0) { return; }
+    if (resolvedPaths.length === 0) { toast.info(t('galleryNoImagesToShareAfterResolution', 'No images to share after resolving selection.')); return;}
     setImagePathsForGalleryShare(resolvedPaths);
     setMultiShareEncryptionPassword(""); 
     setShowMultiShareEncryptDialog(true);
   };
   
   const handleCreateEncryptedMultiShareLink = () => {
+    if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing', 'Alist service is not available.')); return; }
     if (imagePathsForGalleryShare.length === 0 || !multiShareEncryptionPassword) { toast.error(t('galleryErrorPasswordOrFilesForMultiShare')); return; }
-    const { serverUrl, token, username, lsPassword, r2CustomDomain } = getLocalStorageAlistConfig();
-    if (!serverUrl) { toast.error(t('galleryErrorAlistConfigMissingForShare')); return; }
-    let authDetailsToEncrypt: AuthDetails | null = null;
-    if (token) authDetailsToEncrypt = { token }; else if (username) authDetailsToEncrypt = { username, password: lsPassword || "" };
+    const serverUrl = alistService.getBaseUrl();
+    const token = alistService.getCurrentToken();
+    const r2CustomDomain = alistService.getR2CustomDomain();
+    if (!serverUrl) { toast.error(t('galleryErrorAlistConfigMissingForShare', 'Alist server URL is not configured (from service).')); return; }
+    let authDetailsToEncrypt: AuthDetails | null = token ? { token } : (alistService.getIsPublicClient() ? null : null);
     const configToEncrypt: AlistConfigToShare = { serverUrl, authDetails: authDetailsToEncrypt, r2CustomDomain, imagePaths: imagePathsForGalleryShare };
     try {
       const encryptedConfig = placeholderEncrypt(JSON.stringify(configToEncrypt), multiShareEncryptionPassword);
@@ -196,20 +234,71 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   };
 
   const generateViewerLink = (filePath: string) => `${window.location.origin}/view?path=${encodeURIComponent(filePath)}`;
-  const copyHelper = async (file: FileInfo, type: 'link' | 'md' | 'html' | 'ubb') => { /* ... as before ... */ };
+  const copyHelper = async (file: FileInfo, type: 'link' | 'md' | 'html' | 'ubb') => {
+    const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
+    const viewerLink = generateViewerLink(alistFilePath);
+    if (!viewerLink) { toast.error(t('galleryErrorCopyingLink')); return; }
+    let contentToCopy = viewerLink; let successMsgKey = 'imageLinkCopied';
+    if (type === 'md') { contentToCopy = `![${file.name}](${viewerLink})`; successMsgKey = 'markdownLinkCopied'; }
+    else if (type === 'html') { contentToCopy = `<img src="${viewerLink}" alt="${file.name}">`; successMsgKey = 'htmlLinkCopied'; }
+    else if (type === 'ubb') { contentToCopy = `[img]${viewerLink}[/img]`; successMsgKey = 'ubbLinkCopied'; }
+    try { await navigator.clipboard.writeText(contentToCopy); toast.success(t(successMsgKey)); }
+    catch (e:any) { toast.error(t(`galleryErrorCopying${type.charAt(0).toUpperCase() + type.slice(1)}Link`));}
+  };
   const handleCopyLink = (file: FileInfo) => copyHelper(file, 'link');
   const handleCopyMarkdownLink = (file: FileInfo) => copyHelper(file, 'md');
   const handleCopyHtmlLink = (file: FileInfo) => copyHelper(file, 'html');
   const handleCopyUbbLink = (file: FileInfo) => copyHelper(file, 'ubb');
-  const handleCopyThumbnailLink = async (file: FileInfo) => { /* ... as before ... */ };
-  const handleDelete = async (file: FileInfo) => { /* ... as before, ensure confirm message is good for folders ... */ };
-  const handleDeleteSelected = async () => { /* ... as before, ensure confirm message is good for folders ... */ };
-  const navigateUp = () => { /* ... as before ... */ };
+
+  const handleCopyThumbnailLink = async (file: FileInfo) => {
+    if (!file.thumb) { toast.error(t('galleryThumbnailUrlNotAvailable')); return; }
+    try { await navigator.clipboard.writeText(file.thumb); toast.success(t('thumbnailLinkCopied')); }
+    catch (error: any) { toast.error(`${t('galleryErrorCopyingThumbnailLink')} ${error.message || t('galleryUnknownError')}`); }
+  };
+
+  const handleDelete = async (file: FileInfo) => {
+    if (!alistService) return;
+    const fullPath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
+    const confirmMessageKey = file.is_dir ? 'galleryConfirmDeleteFolder' : 'galleryConfirmDelete';
+    const confirmMessage = t(confirmMessageKey, { folderName: file.name, fileName: file.name });
+    if (!window.confirm(confirmMessage)) return;
+    try {
+      await alistService.deleteFile(fullPath); 
+      toast.success(t('galleryDeleteSuccess', { fileName: file.name })); 
+      loadFiles(); 
+      setSelectedFilePaths(prev => prev.filter(p => p !== fullPath)); 
+    } catch (error: any) { toast.error(`${t('galleryErrorDeletingFile')} ${error.message || t('galleryUnknownError')}`); }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedFilePaths.length === 0 || !alistService) { toast.info(t('galleryNoFilesSelectedForDelete')); return; }
+    const containsFolder = selectedFilePaths.some(fp => files.find(f => `${path}${path.endsWith('/') ? '' : '/'}${f.name}` === fp)?.is_dir);
+    const confirmMessage = containsFolder ? 
+        t('galleryConfirmDeleteSelectedWithFolders', { count: selectedFilePaths.length }) :
+        t('galleryConfirmDeleteSelected', { count: selectedFilePaths.length });
+    if (!window.confirm(confirmMessage)) return;
+    try {
+      toast.info(t('galleryDeletingSelectedFiles', { count: selectedFilePaths.length }));
+      const result = await alistService.deleteMultipleFiles(selectedFilePaths);
+      let successCount = 0; let failCount = 0;
+      result.results.forEach(r => r.success ? successCount++ : failCount++);
+      if (result.success) { toast.success(t('galleryDeleteSelectedSuccessCount', { successCount })); }
+      else if (successCount > 0) { toast.warning(t('galleryDeleteSelectedPartialSuccess', { successCount, failCount })); result.results.filter(r => !r.success).forEach(r => console.error(`Failed to delete ${r.path}: ${r.error}`));}
+      else { toast.error(t('galleryDeleteSelectedFailedCount', { failCount })); result.results.filter(r => !r.success).forEach(r => console.error(`Failed to delete ${r.path}: ${r.error}`));}
+    } catch (error: any) { toast.error(`${t('galleryErrorDeletingSelected')} ${error.message}`); } 
+    finally { loadFiles(); setSelectedFilePaths([]); }
+  };
+
+  const navigateUp = () => {
+    if (path === "/") return;
+    const newPath = path.split("/").slice(0, -1).join("/") || "/";
+    onPathChange(newPath);
+  };
  
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="flex items-center space-x-2 flex-wrap gap-y-2">
            {files.length > 0 && (
             <div className="flex items-center space-x-1.5 sm:space-x-2 mr-2">
               <Checkbox
@@ -231,7 +320,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
           </Button>
           <span className="text-sm font-medium hidden sm:inline">{t('galleryCurrentPath')} {path}</span>
         </div>
-        <div className="flex items-center space-x-1 sm:space-x-2">
+        <div className="flex items-center space-x-1 sm:space-x-2 flex-wrap gap-y-2">
           {path !== "/" && (<Button variant="outline" size="sm" onClick={() => { setPasswordPromptPath(path); setCurrentPasswordInput(directoryPasswords[path] || ""); setShowPasswordDialog(true); setPasswordError(null); }}><KeyRound className="h-4 w-4 mr-1" />{t('galleryEnterPassword')}</Button>)}
           <Button variant="outline" size="sm" onClick={() => loadFiles()}>{t('galleryRefresh')}</Button>
           <Button variant="default" size="sm" onClick={handleOpenMultiShareDialog} disabled={selectedFilePaths.length === 0 || isResolvingPaths} title={t('galleryShareSelectedTooltip')}>
@@ -349,7 +438,6 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
            </Carousel>
          </div>
        )}
-       {/* Full screen preview Modal for single image (handleViewImage) */}
        {(currentFile && (currentImageUrl || isPreviewLoading)) && (
          <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4" onClick={() => { setCurrentFile(null); if (currentImageUrl && currentImageUrl.startsWith('blob:')) { URL.revokeObjectURL(currentImageUrl); } setCurrentImageUrl(null); setOriginalFileUrl(null); }}>
            <div className="relative bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 rounded-lg max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>

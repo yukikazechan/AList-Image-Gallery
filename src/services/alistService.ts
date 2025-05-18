@@ -128,6 +128,21 @@ export class AlistService {
     return this.baseUrl;
   }
 
+  // 获取当前R2自定义域名
+  getR2CustomDomain(): string | undefined {
+    return this.r2CustomDomain;
+  }
+
+  // 获取当前Token
+  getCurrentToken(): string | undefined {
+    return this.token;
+  }
+
+  // 获取是否为公共客户端
+  getIsPublicClient(): boolean {
+    return this.isPublicClient;
+  }
+
   // Test connection to verify credentials
   async testConnection(): Promise<boolean> {
     try {
