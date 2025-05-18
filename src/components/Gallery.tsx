@@ -58,8 +58,8 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const isMobile = useIsMobile();
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null); 
-  const [originalFileUrl, setOriginalFileUrl] = useState<string | null>(null); 
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [originalFileUrl, setOriginalFileUrl] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<FileInfo | null>(null);
   const [showFullImage, setShowFullImage] = useState<boolean>(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
@@ -78,6 +78,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const [multiShareEncryptionPassword, setMultiShareEncryptionPassword] = useState<string>("");
   const [imagePathsForGalleryShare, setImagePathsForGalleryShare] = useState<string[]>([]);
   const [isResolvingPaths, setIsResolvingPaths] = useState<boolean>(false);
+
+  const [manualCopyLink, setManualCopyLink] = useState<string | null>(null);
+  const [showManualCopyDialog, setShowManualCopyDialog] = useState<boolean>(false);
 
   const isImageFile = useCallback((file: FileInfo) => !file.is_dir && file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif)$/i), []);
   
@@ -179,16 +182,17 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       const viewerLink = `${window.location.origin}/view?path=${encodeURIComponent(alistFilePath)}&c=${encodeURIComponent(encryptedConfig)}`;
       navigator.clipboard.writeText(viewerLink)
         .then(() => {
-          if (isMobile) {
-            toast.success(t('galleryEncryptedLinkCopied') + " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.'));
-          } else {
-            toast.success(t('galleryEncryptedLinkCopied'));
-          }
+          toast.success(t('galleryEncryptedLinkCopied') + (isMobile ? " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.') : ""));
           toast.info(t('gallerySharePasswordReminder'));
+          // Always show manual copy dialog as a reliable option
+          setManualCopyLink(viewerLink);
+          setShowManualCopyDialog(true);
         })
         .catch(err => {
           console.error('Failed to copy encrypted link: ', err);
           toast.error(t('galleryErrorCopyingLinkGeneric', 'Failed to copy link. You may need to do it manually.'));
+          setManualCopyLink(viewerLink); // Show dialog on error for all platforms
+          setShowManualCopyDialog(true);
         });
       setShowEncryptShareDialog(false); setFileToShare(null);
     } catch (e:any) { console.error("Err creating encrypted link:", e); toast.error(`${t('galleryErrorCreatingEncryptedLink')} ${e.message}`); }
@@ -244,16 +248,17 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       const viewerLink = `${window.location.origin}/view?type=gallery&c=${encodeURIComponent(encryptedConfig)}`;
       navigator.clipboard.writeText(viewerLink)
         .then(() => {
-          if (isMobile) {
-            toast.success(t('galleryMultiEncryptedLinkCopied') + " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.'));
-          } else {
-            toast.success(t('galleryMultiEncryptedLinkCopied'));
-          }
+          toast.success(t('galleryMultiEncryptedLinkCopied') + (isMobile ? " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.') : ""));
           toast.info(t('gallerySharePasswordReminder'));
+          // Always show manual copy dialog as a reliable option
+          setManualCopyLink(viewerLink);
+          setShowManualCopyDialog(true);
         })
         .catch(err => {
           console.error('Failed to copy multi-share encrypted link: ', err);
           toast.error(t('galleryErrorCopyingLinkGeneric', 'Failed to copy link. You may need to do it manually.'));
+          setManualCopyLink(viewerLink); // Show dialog on error for all platforms
+          setShowManualCopyDialog(true);
         });
       setShowMultiShareEncryptDialog(false); setSelectedFilePaths([]); setImagePathsForGalleryShare([]);
     } catch (e:any) { console.error("Err creating multi-share link:", e); toast.error(`${t('galleryErrorCreatingEncryptedLink')} ${e.message}`);}
@@ -264,15 +269,16 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const copyHelper = (contentToCopy: string, successMsgKey: string, errorMsgKey: string = 'galleryErrorCopyingLinkGeneric') => {
     navigator.clipboard.writeText(contentToCopy)
       .then(() => {
-        if (isMobile) {
-          toast.success(t(successMsgKey) + " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.'));
-        } else {
-          toast.success(t(successMsgKey));
-        }
+        toast.success(t(successMsgKey) + (isMobile ? " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.') : ""));
+        // Always show manual copy dialog as a reliable option
+        setManualCopyLink(contentToCopy);
+        setShowManualCopyDialog(true);
       })
       .catch(err => {
         console.error(`Failed to copy (${successMsgKey}): `, err);
         toast.error(t(errorMsgKey, 'Failed to copy link. You may need to do it manually.'));
+        setManualCopyLink(contentToCopy); // Show dialog on error for all platforms
+        setShowManualCopyDialog(true);
       });
   };
 
@@ -518,8 +524,42 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
            </div>
          </div>
        )}
+
+     <Dialog open={showManualCopyDialog} onOpenChange={setShowManualCopyDialog}>
+       <DialogContent className="sm:max-w-md">
+         <DialogHeader>
+           <DialogTitle>{t('galleryManualCopyTitle', 'Manual Copy Required')}</DialogTitle>
+           <DialogDescription>
+             {t('galleryManualCopyDescription', 'Automatic copy failed or is unreliable. Please manually copy the link below.')}
+           </DialogDescription>
+         </DialogHeader>
+         <div className="my-4">
+           <Input
+             type="text"
+             readOnly
+             value={manualCopyLink || ""}
+             className="w-full"
+             onFocus={(e) => e.target.select()}
+           />
+         </div>
+         <DialogFooter className="gap-2 sm:justify-end">
+           <Button variant="outline" onClick={() => setShowManualCopyDialog(false)}>{t('galleryCloseButton', 'Close')}</Button>
+           <Button onClick={() => {
+             if (manualCopyLink) {
+               navigator.clipboard.writeText(manualCopyLink)
+                 .then(() => {
+                   toast.success(t('galleryLinkCopiedToClipboard', 'Link copied to clipboard!'));
+                   setShowManualCopyDialog(false);
+                 })
+                 .catch(() => toast.error(t('galleryManualCopyFailedAgain', 'Copy to clipboard failed again.')));
+             }
+           }}>{t('galleryCopyToClipboardButton', 'Copy to Clipboard')}</Button>
+         </DialogFooter>
+       </DialogContent>
+     </Dialog>
+
     </div>
-  );
+ );
 };
 
 export default Gallery;
