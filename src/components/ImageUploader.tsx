@@ -66,10 +66,115 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   }, [showManualCopyDialog]);
 
-  const loadDirectories = useCallback(async () => { /* ... (existing code, no changes needed here for this task) ... */ }, [alistService, currentPath, directoryPasswords, t]);
-  useEffect(() => { /* ... (existing code) ... */ }, [alistService, currentPath, directoryPasswords, loadDirectories]);
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => { /* ... (existing code) ... */ };
-  const handleUpload = useCallback(async () => { /* ... (existing code) ... */ }, [alistService, files, currentPath, onUploadSuccess, loadDirectories, t]);
+  const loadDirectories = useCallback(async () => {
+    if (!alistService) {
+      setDirectories([]);
+      // Error state is handled by the calling useEffect or context
+      return;
+    }
+    setIsLoadingDirs(true);
+    setConnectionError(null);
+    try {
+      // Use directoryPasswords for the currentPath if available
+      const passwordForPath = directoryPasswords[currentPath];
+      const fetchedFiles = await alistService.listFiles(currentPath, passwordForPath);
+      setDirectories(fetchedFiles.filter(file => file.is_dir));
+    } catch (error: any) {
+      console.error("Error loading directories in ImageUploader:", error);
+      const errorMessage = error.message || t('imageUploaderUnknownLoadingError');
+      setConnectionError(t('imageUploaderLoadingError') + " " + errorMessage);
+      setDirectories([]);
+    } finally {
+      setIsLoadingDirs(false);
+    }
+  }, [alistService, currentPath, directoryPasswords, t]);
+
+  useEffect(() => {
+    if (alistService) {
+      setConnectionError(null); // Clear previous errors when service is available
+      loadDirectories();
+    } else {
+      setDirectories([]);
+      setConnectionError(t('imageUploaderCheckSettings'));
+    }
+  }, [alistService, currentPath, loadDirectories, t]); // directoryPasswords is a dep of loadDirectories
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUploadedImageHttpUrls([]);
+    setImagePreviewSources({});
+    if (e.target.files && e.target.files.length > 0) {
+      setFiles(e.target.files);
+      const firstFile = e.target.files[0];
+      if (firstFile.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreviewUrl(reader.result as string);
+        };
+        reader.readAsDataURL(firstFile);
+      } else {
+        setImagePreviewUrl(null); // Not an image, clear preview
+        toast.warning(t('imageUploaderOnlyImagesAllowed'));
+      }
+    } else {
+      setFiles(null);
+      setImagePreviewUrl(null);
+    }
+  };
+
+  const handleUpload = useCallback(async () => {
+    if (!alistService || !files || files.length === 0) return;
+    
+    setIsUploading(true);
+    setUploadedImageHttpUrls([]);
+    setImagePreviewSources({});
+    const newUploadedAlistPaths: string[] = [];
+    const newPreviewSources: Record<string, string> = {};
+    let anyUploadSucceeded = false;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file.type.startsWith("image/")) {
+        toast.warning(t('imageUploaderSkippingNonImage', { fileName: file.name }));
+        continue;
+      }
+      try {
+        toast.info(t('imageUploaderUploadingFile', { fileName: file.name, current: i + 1, total: files.length }));
+        // Directory password is not typically used for upload; auth is via token
+        await alistService.uploadFile(currentPath, file);
+        
+        const uploadedAlistPath = `${currentPath === '/' ? '' : currentPath}/${file.name}`;
+        newUploadedAlistPaths.push(uploadedAlistPath);
+
+        try {
+            const directLink = await alistService.getFileLink(uploadedAlistPath);
+            if (directLink) {
+                const imgResponse = await fetch(directLink);
+                if (!imgResponse.ok) {
+                    console.warn(`[ImageUploader] Failed to fetch preview for ${uploadedAlistPath} (status: ${imgResponse.status})`);
+                    // Still add Alist path, preview will fail gracefully or not show
+                } else {
+                    const blob = await imgResponse.blob();
+                    newPreviewSources[uploadedAlistPath] = URL.createObjectURL(blob);
+                }
+            }
+        } catch (previewError) {
+            console.warn(`[ImageUploader] Could not get direct link or fetch preview for ${uploadedAlistPath}:`, previewError);
+        }
+        anyUploadSucceeded = true;
+        toast.success(`${file.name} ${t('uploadSuccess')}`);
+      } catch (error: any) {
+        console.error("Upload error for file " + file.name + ":", error);
+        toast.error(t('imageUploaderUploadFailedForFile', { fileName: file.name, error: error.message }));
+      }
+    }
+    setUploadedImageHttpUrls(newUploadedAlistPaths);
+    setImagePreviewSources(newPreviewSources);
+    setIsUploading(false);
+    if (anyUploadSucceeded) {
+        onUploadSuccess();
+    }
+    // Consider if loadDirectories() should be called here to refresh folder list (e.g., if new files affect dir display)
+  }, [alistService, files, currentPath, onUploadSuccess, t, directoryPasswords]);
   
   const handleOpenEncryptShareDialogForUploader = (alistPath: string) => {
     setAlistPathToShareFromUploader(alistPath);
@@ -157,11 +262,50 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   }, [t]);
 
-  const handlePathChange = (path: string) => { /* ... (existing code) ... */ };
-  const navigateToFolder = (folderName: string) => { /* ... (existing code) ... */ };
-  const navigateUp = () => { /* ... (existing code) ... */ };
-  const handleCreateFolder = async () => { /* ... (existing code) ... */ };
-  useEffect(() => { /* ... (existing code for imagePreviewSources) ... */ }, [uploadedImageHttpUrls, alistService]); 
+  const handlePathChange = (newPath: string) => {
+    onPathChange(newPath); // Propagate path change
+    setUploadedImageHttpUrls([]);
+    setImagePreviewSources({});
+    setImagePreviewUrl(null);
+    setFiles(null);
+    // loadDirectories() will be called by useEffect due to currentPath change
+  };
+
+  const navigateToFolder = (folderName: string) => {
+    const newPath = `${currentPath === "/" ? "" : currentPath}/${folderName}`;
+    handlePathChange(newPath);
+  };
+
+  const navigateUp = () => {
+    if (currentPath === "/") return;
+    const newPath = currentPath.substring(0, currentPath.lastIndexOf("/"));
+    handlePathChange(newPath === "" ? "/" : newPath);
+  };
+
+  const handleCreateFolder = async () => {
+    if (!alistService) {
+      toast.error(t('galleryErrorAlistServiceMissing'));
+      return;
+    }
+    const folderName = window.prompt(t('imageUploaderEnterFolderName'));
+    if (folderName && folderName.trim() !== "") {
+      try {
+        // Directory password is not typically used for folder creation; auth is via token
+        await alistService.createFolder(currentPath, folderName.trim());
+        toast.success(t('imageUploaderCreateFolderSuccess', { folderName: folderName.trim() }) || `Folder "${folderName.trim()}" created!`);
+        loadDirectories(); // Refresh the directory list
+      } catch (error: any) {
+        console.error("Error creating folder:", error);
+        toast.error(t('imageUploaderCreateFolderFailed', { folderName: folderName.trim(), error: error.message }) || `Failed to create folder: ${error.message}`);
+      }
+    } else if (folderName !== null) { // User pressed OK with empty name
+        toast.warning(t('imageUploaderFolderNameCannotBeEmpty', 'Folder name cannot be empty.'));
+    }
+  };
+  
+  // The useEffect for imagePreviewSources is removed as its logic
+  // is now better integrated into the handleUpload function for more
+  // immediate and context-aware preview generation.
 
   return (
     <Card className="w-full">

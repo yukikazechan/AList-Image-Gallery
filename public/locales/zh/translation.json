@@ -22,6 +22,8 @@
   "imageUploaderCreateFolder": "创建文件夹",
   "imageUploaderEnterFolderName": "输入新文件夹名称：",
   "imageUploaderCreateFolderFailed": "创建文件夹失败：",
+  "imageUploaderCreateFolderSuccess": "文件夹“{{folderName}}”创建成功！",
+  "imageUploaderFolderNameCannotBeEmpty": "文件夹名称不能为空。",
   "imageUploaderRefresh": "刷新",
   "imageUploaderSelectFile": "请选择要上传的文件",
   "imageUploaderNoFileSelected": "未选择任何文件",

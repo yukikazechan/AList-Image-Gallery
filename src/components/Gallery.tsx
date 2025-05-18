@@ -82,10 +82,12 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const [manualCopyLink, setManualCopyLink] = useState<string | null>(null);
   const [showManualCopyDialog, setShowManualCopyDialog] = useState<boolean>(false);
 
-  const isImageFile = useCallback((file: FileInfo) => !file.is_dir && file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif)$/i), []);
+  const isImageFile = useCallback((file: FileInfo) => !file.is_dir && file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|avif|jxl)$/i), []);
+
+  const displayedFiles = useMemo(() => files.filter(file => file.is_dir || isImageFile(file)), [files, isImageFile]);
   
-  const allDisplayedItemPaths = useMemo(() => files.map(f => `${path}${path.endsWith('/') ? '' : '/'}${f.name}`), [files, path]);
-  const isAllSelected = useMemo(() => files.length > 0 && selectedFilePaths.length === allDisplayedItemPaths.length, [selectedFilePaths, allDisplayedItemPaths, files.length]);
+  const allDisplayedItemPaths = useMemo(() => displayedFiles.map(f => `${path}${path.endsWith('/') ? '' : '/'}${f.name}`), [displayedFiles, path]);
+  const isAllSelected = useMemo(() => displayedFiles.length > 0 && selectedFilePaths.length === displayedFiles.length, [selectedFilePaths, displayedFiles.length]);
 
   const loadFiles = useCallback(async (currentPathToLoad?: string, dirPassword?: string) => {
     if (!alistService) { setFiles([]); setLoading(false); return; }
@@ -358,7 +360,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div className="flex items-center space-x-2 flex-wrap gap-y-2">
-           {files.length > 0 && (
+           {displayedFiles.length > 0 && ( // Use displayedFiles.length
             <div className="flex items-center space-x-1.5 sm:space-x-2 mr-2">
               <Checkbox
                 id="select-all-gallery"
@@ -398,11 +400,11 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
         </DialogContent>
       </Dialog>
 
-      {loading && !isResolvingPaths ? ( <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin text-gray-500" /></div> ) : 
-       files.length === 0 && !isResolvingPaths ? ( <div className="text-center p-12 text-gray-500">{t('galleryNoFilesFound')}</div> ) : 
+      {loading && !isResolvingPaths ? ( <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin text-gray-500" /></div> ) :
+       displayedFiles.length === 0 && !isResolvingPaths ? ( <div className="text-center p-12 text-gray-500">{t('galleryNoFilesFound')}</div> ) :
       (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
-          {files.map((file) => {
+          {displayedFiles.map((file) => { // Iterate over displayedFiles
             const fullFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
             const isSelected = selectedFilePaths.includes(fullFilePath);
             return (
