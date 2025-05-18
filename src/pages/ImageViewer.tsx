@@ -337,12 +337,12 @@ const ImageViewer: React.FC = () => {
       {/* Zoom Modal */}
       <Dialog open={isZoomModalOpen} onOpenChange={setIsZoomModalOpen}>
         <DialogContent className="max-w-[90vw] max-h-[90vh] w-auto h-auto p-2 sm:p-4 flex flex-col bg-white dark:bg-slate-900 !rounded-lg">
-          <DialogHeader className="flex flex-row justify-between items-center pb-2">
-            <DialogTitle className="truncate max-w-[calc(100%-80px)] text-sm sm:text-base">{zoomedImageAlt}</DialogTitle> {/* Adjusted max-width */}
-            <div className="flex items-center space-x-1">
+          <DialogHeader className="flex flex-row justify-between items-center py-3"> {/* Increased vertical padding */}
+            <DialogTitle className="truncate max-w-[calc(100%-130px)] text-sm sm:text-base">{zoomedImageAlt}</DialogTitle> {/* Reserved more space for buttons */}
+            <div className="flex items-center space-x-1.5 flex-shrink-0"> {/* Added flex-shrink-0 and slightly increased spacing */}
                 <Button variant="ghost" size="icon" onClick={handleZoomOut} title={t('imageViewer.zoomOut', "Zoom Out")}><ZoomOut className="h-5 w-5"/></Button>
                 <Button variant="ghost" size="icon" onClick={handleZoomIn} title={t('imageViewer.zoomIn', "Zoom In")}><ZoomIn className="h-5 w-5"/></Button>
-                {/* Rely on default DialogContent close button or Dialog.Close if needed elsewhere. Removed explicit one here. */}
+                {/* The default X button from DialogContent will be to the right of this div */}
             </div>
           </DialogHeader>
           <div className="flex-grow flex items-center justify-center overflow-auto relative pt-2"> {/* Added pt-2 for a bit of space from header */}
