@@ -222,5 +222,6 @@
   "galleryLinkCopiedToClipboard": "链接已复制！",
   "galleryManualCopyFailedAgain": "再次尝试复制也失败了。",
   "galleryCloseButton": "关闭",
+  "galleryMobileCopyPrompt": "请尝试粘贴。若失败，您可能需要手动复制。",
   "galleryCopyToClipboardButton": "复制到剪贴板"
 }

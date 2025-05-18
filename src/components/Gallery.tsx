@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { AlistService, FileInfo, AuthDetails } from "@/services/alistService";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -53,7 +54,8 @@ interface GalleryProps {
 }
 
 const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, directoryPasswords, setDirectoryPasswords }) => {
-  const { t } = useTranslation(); 
+  const { t } = useTranslation();
+  const isMobile = useIsMobile();
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null); 
@@ -177,7 +179,11 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       const viewerLink = `${window.location.origin}/view?path=${encodeURIComponent(alistFilePath)}&c=${encodeURIComponent(encryptedConfig)}`;
       navigator.clipboard.writeText(viewerLink)
         .then(() => {
-          toast.success(t('galleryEncryptedLinkCopied'));
+          if (isMobile) {
+            toast.success(t('galleryEncryptedLinkCopied') + " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.'));
+          } else {
+            toast.success(t('galleryEncryptedLinkCopied'));
+          }
           toast.info(t('gallerySharePasswordReminder'));
         })
         .catch(err => {
@@ -238,7 +244,11 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       const viewerLink = `${window.location.origin}/view?type=gallery&c=${encodeURIComponent(encryptedConfig)}`;
       navigator.clipboard.writeText(viewerLink)
         .then(() => {
-          toast.success(t('galleryMultiEncryptedLinkCopied'));
+          if (isMobile) {
+            toast.success(t('galleryMultiEncryptedLinkCopied') + " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.'));
+          } else {
+            toast.success(t('galleryMultiEncryptedLinkCopied'));
+          }
           toast.info(t('gallerySharePasswordReminder'));
         })
         .catch(err => {
@@ -254,7 +264,11 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const copyHelper = (contentToCopy: string, successMsgKey: string, errorMsgKey: string = 'galleryErrorCopyingLinkGeneric') => {
     navigator.clipboard.writeText(contentToCopy)
       .then(() => {
-        toast.success(t(successMsgKey));
+        if (isMobile) {
+          toast.success(t(successMsgKey) + " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.'));
+        } else {
+          toast.success(t(successMsgKey));
+        }
       })
       .catch(err => {
         console.error(`Failed to copy (${successMsgKey}): `, err);
