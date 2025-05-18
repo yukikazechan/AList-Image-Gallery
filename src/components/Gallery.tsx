@@ -384,9 +384,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
           <Button variant="outline" size="sm" onClick={() => loadFiles()}>{t('galleryRefresh')}</Button>
           <Button variant="default" size="sm" onClick={handleOpenMultiShareDialog} disabled={selectedFilePaths.length === 0 || isResolvingPaths} title={t('galleryShareSelectedTooltip')}>
             {isResolvingPaths ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <LibraryBig className="h-4 w-4 mr-1" />}
-            {t('galleryShareSelectedButton', { count: selectedFilePaths.length })}
+            {t('galleryShareSelectedButton', 'Share ({{count}})', { count: selectedFilePaths.length })}
           </Button>
-          <Button variant="destructive" size="sm" onClick={handleDeleteSelected} disabled={selectedFilePaths.length === 0 || loading || isResolvingPaths} title={t('galleryDeleteSelectedTooltip')}><Trash2 className="h-4 w-4 mr-1" />{t('galleryDeleteSelectedButton', { count: selectedFilePaths.length })}</Button>
+          <Button variant="destructive" size="sm" onClick={handleDeleteSelected} disabled={selectedFilePaths.length === 0 || loading || isResolvingPaths} title={t('galleryDeleteSelectedTooltip')}><Trash2 className="h-4 w-4 mr-1" />{t('galleryDeleteSelectedButton', 'Delete ({{count}})', { count: selectedFilePaths.length })}</Button>
         </div>
       </div>
 

@@ -23,7 +23,7 @@ const App = () => {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Sonner />
+        <Sonner expand={true} />
         <BrowserRouter>
           <div className="p-4 flex justify-end"> {/* Add some padding and align to the right */}
             <ToggleGroup type="single" value={i18n.language} onValueChange={changeLanguage}>
