@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { AlistService, FileInfo, AuthDetails } from "@/services/alistService";
+import { AlistService, FileInfo, AuthDetails, ListResponse } from "@/services/alistService";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +37,7 @@ import {
 import Autoplay from "embla-carousel-autoplay";
 import { useTranslation } from 'react-i18next';
 import { placeholderEncrypt } from '@/lib/placeholderCrypto';
+import pako from 'pako';
 
 interface AlistConfigToShare {
   serverUrl: string | null;
@@ -58,6 +59,10 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const isMobile = useIsMobile();
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const itemsPerPage = 30; // Or make this configurable
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [originalFileUrl, setOriginalFileUrl] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<FileInfo | null>(null);
@@ -89,16 +94,33 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const allDisplayedItemPaths = useMemo(() => displayedFiles.map(f => `${path}${path.endsWith('/') ? '' : '/'}${f.name}`), [displayedFiles, path]);
   const isAllSelected = useMemo(() => displayedFiles.length > 0 && selectedFilePaths.length === displayedFiles.length, [selectedFilePaths, displayedFiles.length]);
 
-  const loadFiles = useCallback(async (currentPathToLoad?: string, dirPassword?: string) => {
-    if (!alistService) { setFiles([]); setLoading(false); return; }
+  const loadFiles = useCallback(async (currentPathToLoad?: string, dirPassword?: string, pageToLoad: number = 1) => {
+    if (!alistService) {
+      setFiles([]);
+      setLoading(false);
+      setLoadingMore(false);
+      return;
+    }
     const pathToLoad = currentPathToLoad || path;
-    setLoading(true);
-    setPasswordError(null); 
+    if (pageToLoad === 1) {
+      setLoading(true);
+      setFiles([]); // Reset files when loading the first page or changing path
+    } else {
+      setLoadingMore(true);
+    }
+    setPasswordError(null);
     try {
       const passwordToUse = dirPassword || directoryPasswords[pathToLoad];
-      const filesList = await alistService.listFiles(pathToLoad, passwordToUse);
-      setFiles(filesList); 
-      if (passwordToUse && pathToLoad === passwordPromptPath) { setShowPasswordDialog(false); setCurrentPasswordInput(""); }
+      const response: ListResponse = await alistService.listFiles(pathToLoad, passwordToUse, pageToLoad, itemsPerPage);
+      
+      setFiles(prevFiles => pageToLoad === 1 ? response.content : [...prevFiles, ...response.content]);
+      setCurrentPage(pageToLoad);
+      setTotalPages(Math.ceil(response.total / itemsPerPage));
+
+      if (passwordToUse && pathToLoad === passwordPromptPath) {
+        setShowPasswordDialog(false);
+        setCurrentPasswordInput("");
+      }
     } catch (error: any) {
       const errorMessage = error.message || t('galleryUnknownError');
       const lowerErrorMessage = errorMessage.toLowerCase();
@@ -110,21 +132,43 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
             setPasswordError(t('galleryPasswordIncorrectOrNoPermission'));
         } else if (isObjectNotFoundError) { setPasswordError(t('galleryPasswordOrPathInvalid')); }
         else { setPasswordError(t('galleryPasswordPossiblyRequired'));}
-        setFiles([]);
-      } else { toast.error(`${t('galleryErrorLoadingFiles')} ${errorMessage}`); setFiles([]); }
-    } finally { setLoading(false); }
-  }, [alistService, path, t, directoryPasswords, passwordPromptPath]);
-
+        if (pageToLoad === 1) setFiles([]); // Ensure files are cleared on error for the first page
+      } else {
+        toast.error(`${t('galleryErrorLoadingFiles')} ${errorMessage}`);
+        if (pageToLoad === 1) setFiles([]); // Ensure files are cleared on error for the first page
+      }
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [alistService, path, t, directoryPasswords, passwordPromptPath, itemsPerPage, setFiles, setCurrentPage, setTotalPages, setLoading, setLoadingMore, setPasswordError, setShowPasswordDialog, setCurrentPasswordInput]);
+  
   useEffect(() => {
-    setSelectedFilePaths([]); 
-    if (alistService) { loadFiles(); } else { setFiles([]); }
-    return () => { if (currentImageUrl && currentImageUrl.startsWith('blob:')) { URL.revokeObjectURL(currentImageUrl); }};
-  }, [alistService, path, loadFiles]);
+    setSelectedFilePaths([]);
+    setCurrentPage(1);
+    setTotalPages(1);
+    // setFiles([]); // This is now handled inside loadFiles when pageToLoad is 1
+    if (alistService) {
+      loadFiles(path, directoryPasswords[path], 1);
+    } else {
+      setFiles([]); // Explicitly clear if no service
+      setLoading(false); // Ensure loading is false if no service
+    }
+    // Cleanup function for blob URL
+    return () => {
+      if (currentImageUrl && currentImageUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(currentImageUrl);
+      }
+    };
+  }, [alistService, path, loadFiles, directoryPasswords]); // Added loadFiles and directoryPasswords
 
   const handlePasswordSubmit = () => {
     if (!passwordPromptPath || !currentPasswordInput) return;
     setDirectoryPasswords(prev => ({ ...prev, [passwordPromptPath]: currentPasswordInput }));
-    loadFiles(passwordPromptPath, currentPasswordInput);
+    // The useEffect above will trigger loadFiles due to directoryPasswords changing,
+    // assuming passwordPromptPath is the current path.
+    // For immediate effect or if paths differ, explicitly call:
+    loadFiles(passwordPromptPath, currentPasswordInput, 1);
   };
 
   const handleNavigate = (file: FileInfo) => {
@@ -210,8 +254,10 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       if (fileEntry) {
         if (fileEntry.is_dir) {
           try {
-            const dirContents = await alistService.listFiles(selectedPath, directoryPasswords[selectedPath]);
-            dirContents.filter(isImageFile).forEach(imgFile => {
+            // For simplicity, assume listFiles without pagination for resolving all images in a folder for share
+            // If folders can be extremely large, this might need its own pagination or a different strategy
+            const dirResponse = await alistService.listFiles(selectedPath, directoryPasswords[selectedPath]); // No pagination for full resolve
+            dirResponse.content.filter(isImageFile).forEach(imgFile => {
               resolvedImagePaths.push(`${selectedPath}${selectedPath.endsWith('/') ? '' : '/'}${imgFile.name}`);
             });
           } catch (e) { console.error(`Error listing contents of folder ${selectedPath}:`, e); toast.error(t('galleryErrorListingFolderContents', { folderName: fileEntry.name })); }
@@ -243,9 +289,29 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     const r2CustomDomain = alistService.getR2CustomDomain();
     if (!serverUrl) { toast.error(t('galleryErrorAlistConfigMissingForShare', 'Alist server URL is not configured (from service).')); return; }
     let authDetailsToEncrypt: AuthDetails | null = token ? { token } : (alistService.getIsPublicClient() ? null : null);
-    const configToEncrypt: AlistConfigToShare = { serverUrl, authDetails: authDetailsToEncrypt, r2CustomDomain, imagePaths: imagePathsForGalleryShare };
+    // Add a version/compression marker to the config before stringifying and compressing
+    const configToEncrypt: AlistConfigToShare & { v?: number; comp?: string } = {
+      serverUrl,
+      authDetails: authDetailsToEncrypt,
+      r2CustomDomain,
+      imagePaths: imagePathsForGalleryShare,
+      v: 2, // Version marker for potentially compressed payload
+      comp: 'pako_b64' // Compression method marker
+    };
     try {
-      const encryptedConfig = placeholderEncrypt(JSON.stringify(configToEncrypt), multiShareEncryptionPassword);
+      const jsonString = JSON.stringify(configToEncrypt);
+      const compressedData = pako.deflate(jsonString); // Returns Uint8Array
+      
+      // Convert Uint8Array to a binary string for btoa
+      let binaryString = '';
+      // Avoid String.fromCharCode.apply due to potential stack overflow with large arrays
+      const chunkSize = 8192;
+      for (let i = 0; i < compressedData.length; i += chunkSize) {
+        binaryString += String.fromCharCode.apply(null, Array.from(compressedData.subarray(i, i + chunkSize)));
+      }
+      const base64Compressed = btoa(binaryString);
+
+      const encryptedConfig = placeholderEncrypt(base64Compressed, multiShareEncryptionPassword);
       if (!encryptedConfig) { toast.error(t('galleryErrorEncryptionFailed')); return; }
       const viewerLink = `${window.location.origin}/view?type=gallery&c=${encodeURIComponent(encryptedConfig)}`;
       navigator.clipboard.writeText(viewerLink)
@@ -324,10 +390,10 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     const confirmMessage = t(confirmMessageKey, { folderName: file.name, fileName: file.name });
     if (!window.confirm(confirmMessage)) return;
     try {
-      await alistService.deleteFile(fullPath); 
-      toast.success(t('galleryDeleteSuccess', { fileName: file.name })); 
-      loadFiles(); 
-      setSelectedFilePaths(prev => prev.filter(p => p !== fullPath)); 
+      await alistService.deleteFile(fullPath);
+      toast.success(t('galleryDeleteSuccess', { fileName: file.name }));
+      loadFiles(path, directoryPasswords[path], 1); // Reload from page 1
+      setSelectedFilePaths(prev => prev.filter(p => p !== fullPath));
     } catch (error: any) { toast.error(`${t('galleryErrorDeletingFile')} ${error.message || t('galleryUnknownError')}`); }
   };
 
@@ -346,8 +412,12 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       if (result.success) { toast.success(t('galleryDeleteSelectedSuccessCount', { successCount })); }
       else if (successCount > 0) { toast.warning(t('galleryDeleteSelectedPartialSuccess', { successCount, failCount })); result.results.filter(r => !r.success).forEach(r => console.error(`Failed to delete ${r.path}: ${r.error}`));}
       else { toast.error(t('galleryDeleteSelectedFailedCount', { failCount })); result.results.filter(r => !r.success).forEach(r => console.error(`Failed to delete ${r.path}: ${r.error}`));}
-    } catch (error: any) { toast.error(`${t('galleryErrorDeletingSelected')} ${error.message}`); } 
-    finally { loadFiles(); setSelectedFilePaths([]); }
+    } catch (error: any) { toast.error(`${t('galleryErrorDeletingSelected')} ${error.message}`); }
+    finally {
+      // After deletion, reload from page 1
+      loadFiles(path, directoryPasswords[path], 1);
+      setSelectedFilePaths([]);
+    }
   };
 
   const navigateUp = () => {
@@ -355,19 +425,58 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     const newPath = path.split("/").slice(0, -1).join("/") || "/";
     onPathChange(newPath);
   };
+
+  const handleLoadMore = () => {
+    if (currentPage < totalPages && !loadingMore && alistService) {
+      loadFiles(path, directoryPasswords[path], currentPage + 1);
+    }
+  };
+
+  const handleLoadAllImages = async () => {
+    if (!alistService || loading || loadingMore || isResolvingPaths) return;
+
+    setLoading(true);
+    setLoadingMore(true); // Use loadingMore to indicate a potentially longer load
+    setFiles([]); // Clear current files
+    setSelectedFilePaths([]); // Clear selection
+
+    try {
+      const passwordToUse = directoryPasswords[path];
+      // Fetch all files by requesting a very large per_page.
+      // Alist API might have a limit, but this is a common pattern.
+      // A more robust solution for extremely large directories would be
+      // to repeatedly call listFiles until total is reached.
+      const response: ListResponse = await alistService.listFiles(path, passwordToUse, 1, 10000); // Request up to 10000 items
+      
+      // Filter for only image files and directories
+      const allItems = response.content.filter(file => file.is_dir || isImageFile(file));
+      setFiles(allItems);
+      setCurrentPage(1); // Reset pagination state
+      setTotalPages(1); // Assume all loaded
+      toast.success(t('galleryAllImagesLoaded', { count: allItems.length }));
+
+    } catch (error: any) {
+      const errorMessage = error.message || t('galleryUnknownError');
+      toast.error(`${t('galleryErrorLoadingAllFiles')} ${errorMessage}`);
+      setFiles([]); // Ensure files are cleared on error
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  };
  
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div className="flex items-center space-x-2 flex-wrap gap-y-2">
-           {displayedFiles.length > 0 && ( // Use displayedFiles.length
+           {displayedFiles.length > 0 && (
             <div className="flex items-center space-x-1.5 sm:space-x-2 mr-2">
               <Checkbox
                 id="select-all-gallery"
                 checked={isAllSelected}
                 onCheckedChange={(checked) => {
-                  if (checked) { setSelectedFilePaths(allDisplayedItemPaths); } 
-                  else { setSelectedFilePaths([]); }
+                if (checked) { setSelectedFilePaths(allDisplayedItemPaths); }
+                else { setSelectedFilePaths([]); }
                 }}
                 aria-label={isAllSelected ? t('galleryDeselectAll', 'Deselect All') : t('gallerySelectAll', 'Select All')}
               />
@@ -383,7 +492,13 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
         </div>
         <div className="flex items-center space-x-1 sm:space-x-2 flex-wrap gap-y-2">
           {path !== "/" && (<Button variant="outline" size="sm" onClick={() => { setPasswordPromptPath(path); setCurrentPasswordInput(directoryPasswords[path] || ""); setShowPasswordDialog(true); setPasswordError(null); }}><KeyRound className="h-4 w-4 mr-1" />{t('galleryEnterPassword')}</Button>)}
-          <Button variant="outline" size="sm" onClick={() => loadFiles()}>{t('galleryRefresh')}</Button>
+          <Button variant="outline" size="sm" onClick={() => loadFiles(path, undefined, 1)}>{t('galleryRefresh')}</Button>
+          {currentPage < totalPages && ( // Only show Load All if there are more pages
+            <Button variant="outline" size="sm" onClick={handleLoadAllImages} disabled={loading || loadingMore || isResolvingPaths}>
+              {loadingMore ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+              {t('galleryLoadAllImages', 'Load All Images')} ({files.length} / {totalPages * itemsPerPage}) {/* Display loaded count / estimated total */}
+            </Button>
+          )}
           <Button variant="default" size="sm" onClick={handleOpenMultiShareDialog} disabled={selectedFilePaths.length === 0 || isResolvingPaths} title={t('galleryShareSelectedTooltip')}>
             {isResolvingPaths ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <LibraryBig className="h-4 w-4 mr-1" />}
             {t('galleryShareSelectedButton', 'Share ({{count}})', { count: selectedFilePaths.length })}
@@ -453,6 +568,20 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
           })}
         </div>
        )}
+      
+      {loadingMore && (
+        <div className="flex justify-center py-4">
+          <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
+        </div>
+      )}
+
+      {!loading && !loadingMore && currentPage < totalPages && displayedFiles.length > 0 && (
+        <div className="flex justify-center py-4">
+          <Button onClick={handleLoadMore} variant="outline">
+            {t('galleryLoadMore', 'Load More')}
+          </Button>
+        </div>
+      )}
 
       <Dialog open={showEncryptShareDialog} onOpenChange={setShowEncryptShareDialog}>
         <DialogContent className="sm:max-w-md">

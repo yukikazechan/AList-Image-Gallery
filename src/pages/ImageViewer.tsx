@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { AlistService, AuthDetails } from '@/services/alistService';
-import { Loader2, AlertCircle, ChevronLeft, ZoomIn, ZoomOut } from 'lucide-react'; // Removed CloseIcon from here
+import { Loader2, AlertCircle, ChevronLeft, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTranslation } from 'react-i18next';
 import { placeholderDecrypt } from '@/lib/placeholderCrypto';
+import pako from 'pako';
 import {
   Dialog,
   DialogContent,
@@ -30,9 +32,54 @@ interface GalleryItem {
   originalUrl?: string; 
 }
 
+// Moved getMimeTypeByFilename outside the component for stable reference
+const getMimeTypeByFilename = (filename: string): string | undefined => {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  if (!ext) return undefined;
+  switch (ext) {
+    case 'jpg': case 'jpeg': return 'image/jpeg';
+    case 'png': return 'image/png';
+    case 'gif': return 'image/gif';
+    case 'webp': return 'image/webp';
+    case 'bmp': return 'image/bmp';
+    case 'avif': return 'image/avif';
+    case 'jxl': return 'image/jxl';
+    default: return undefined;
+  }
+};
+
 const ImageViewer: React.FC = () => {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+
+  // Helper function to decrypt and parse payload, attempting decompression
+  const decryptAndParsePayload = (encryptedPayload: string, passwordForDecryption: string): DecryptedConfig & { comp?: string; v?: number } => {
+    const decryptedBasePayload = placeholderDecrypt(encryptedPayload, passwordForDecryption);
+    try {
+      // Attempt Base64 decode then pako inflate (for new v2 links with comp marker)
+      const binaryDecoded = atob(decryptedBasePayload);
+      const uint8Array = new Uint8Array(binaryDecoded.length);
+      for (let i = 0; i < binaryDecoded.length; i++) {
+        uint8Array[i] = binaryDecoded.charCodeAt(i);
+      }
+      const decompressedJson = pako.inflate(uint8Array, { to: 'string' });
+      console.log("[ImageViewer] Decompressed shared config successfully.");
+      const parsedConfig = JSON.parse(decompressedJson);
+      // Check if it was indeed a compressed payload we expected
+      if (parsedConfig.comp === 'pako_b64' && parsedConfig.v === 2) {
+        return parsedConfig as DecryptedConfig & { comp?: string; v?: number };
+      }
+      // If markers don't match, but it decompressed and parsed, it's an odd state.
+      // For safety, if it doesn't look like our compressed format, try parsing original decrypted payload.
+      // This path might be hit if an uncompressed payload coincidentally base64 decodes and inflates to valid JSON.
+      console.warn("[ImageViewer] Payload decompressed but markers didn't match. Attempting direct parse of original decrypted payload.");
+      return JSON.parse(decryptedBasePayload) as DecryptedConfig & { comp?: string; v?: number };
+    } catch (e) {
+      console.log("[ImageViewer] Failed to decompress/decode as pako_b64, assuming raw JSON payload (v1 link or error).", e);
+      // Fallback: assume it's raw (non-compressed, non-base64) JSON
+      return JSON.parse(decryptedBasePayload) as DecryptedConfig & { comp?: string; v?: number };
+    }
+  };
   
   const mode = searchParams.get('type') === 'gallery' ? 'gallery' : 'single';
   const singleImagePathFromParam = searchParams.get('path'); 
@@ -42,14 +89,18 @@ const ImageViewer: React.FC = () => {
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   
   const [error, setError] = useState<string | null>(null); 
-  const [isLoading, setIsLoading] = useState<boolean>(true); 
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false); // For "Load More" button
+  const [numDisplayed, setNumDisplayed] = useState<number>(25); // Initial number of items to display
+  const ITEMS_PER_LOAD = 25; // Number of items to load each time
 
-  const [showPasswordPrompt, setShowPasswordPrompt] = useState<boolean>(!!encryptedConfigParam);
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState<boolean>(false); // Initial state false, will be set by useEffect
   const [decryptionPassword, setDecryptionPassword] = useState<string>('');
   const [decryptionError, setDecryptionError] = useState<string | null>(null);
   const [tempAlistConfig, setTempAlistConfig] = useState<DecryptedConfig | null>(null);
-  const [triedDecryption, setTriedDecryption] = useState<boolean>(false);
+  const [triedDecryption, setTriedDecryption] = useState<boolean>(false); // Tracks if manual decryption attempt was made
   const [decryptedImagePaths, setDecryptedImagePaths] = useState<string[] | null>(null);
+  const [initialPasswordLoadAttempted, setInitialPasswordLoadAttempted] = useState<boolean>(false);
 
   // State for Zoom Modal
   const [isZoomModalOpen, setIsZoomModalOpen] = useState<boolean>(false);
@@ -57,6 +108,8 @@ const ImageViewer: React.FC = () => {
   const [zoomedImageAlt, setZoomedImageAlt] = useState<string>("");
   // State for zoom level within modal
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+
+  // Pagination state removed
 
 
   const openZoomModal = (src: string | null, alt: string) => {
@@ -71,14 +124,15 @@ const ImageViewer: React.FC = () => {
   const handleZoomIn = () => setZoomLevel(prev => Math.min(prev * 1.2, 5)); // Max zoom 5x
   const handleZoomOut = () => setZoomLevel(prev => Math.max(prev / 1.2, 0.2)); // Min zoom 0.2x
 
+  // Pagination logic removed
 
   const handlePasswordSubmit = useCallback(() => {
     if (!encryptedConfigParam) return;
     setDecryptionError(null);
-    setIsLoading(true); 
+    setIsLoading(true);
     try {
-      const decryptedJson = placeholderDecrypt(encryptedConfigParam, decryptionPassword);
-      const config = JSON.parse(decryptedJson) as DecryptedConfig;
+      // Directly pass encrypted payload and password to the helper
+      const config = decryptAndParsePayload(encryptedConfigParam, decryptionPassword);
       if (!config.serverUrl) {
         throw new Error(t('imageViewer.decryptionFailedConfigError', 'Decrypted data is not a valid Alist configuration.'));
       }
@@ -90,7 +144,19 @@ const ImageViewer: React.FC = () => {
         throw new Error(t('imageViewer.galleryModeNoPathsError', 'Gallery mode selected, but image paths are missing in the shared link.'));
       }
       setShowPasswordPrompt(false);
-      setTriedDecryption(true);
+      setTriedDecryption(true); // Mark that a successful decryption (manual or auto) has occurred
+
+      // Save the successfully used password to localStorage
+      if (encryptedConfigParam && decryptionPassword) {
+        try {
+          const savedPasswords = JSON.parse(localStorage.getItem('sharedLinkPasswords_v1') || '{}');
+          savedPasswords[encryptedConfigParam] = decryptionPassword;
+          localStorage.setItem('sharedLinkPasswords_v1', JSON.stringify(savedPasswords));
+          console.log("[ImageViewer] Share password saved to localStorage.");
+        } catch (lsError) {
+          console.error("Failed to save share password to localStorage", lsError);
+        }
+      }
     } catch (e: any) {
       console.error("Decryption error:", e);
       setDecryptionError(e.message || t('imageViewer.decryptionGenericError', 'Failed to decrypt configuration.'));
@@ -132,59 +198,127 @@ const ImageViewer: React.FC = () => {
     return null;
   }, [activeAlistConfig, encryptedConfigParam, triedDecryption, t]);
 
+  // Effect for attempting to load and decrypt with saved password
   useEffect(() => {
-    const objectUrlsToRevoke: string[] = [];
-
-    const fetchAndSetImage = async (filePath: string, index?: number) => {
-      if (index !== undefined) {
-        setGalleryItems(prev => prev.map((item, i) => i === index ? { ...item, isLoading: true, error: undefined } : item));
-      } else {
-        setIsLoading(true); // For single image mode
-        setError(null);
-      }
-
+    if (encryptedConfigParam && !initialPasswordLoadAttempted && !tempAlistConfig) {
+      setInitialPasswordLoadAttempted(true); // Mark that we are attempting now
       try {
-        if (!alistService) throw new Error(t('imageViewer.noAlistServiceErrorShort', 'Alist service not ready.'));
-        
-        const originalFileUrl = await alistService.getFileLink(filePath);
-        if (!originalFileUrl) throw new Error(t('imageViewer.failedToGetDirectUrlError', 'Failed to get direct URL.'));
+        const savedPasswords = JSON.parse(localStorage.getItem('sharedLinkPasswords_v1') || '{}');
+        const savedPwd = savedPasswords[encryptedConfigParam];
 
-        const response = await fetch(originalFileUrl);
-        if (!response.ok) throw new Error(`${t('imageViewer.fetchFailedError', 'Fetch failed:')} ${response.status} ${response.statusText}`);
-        
-        const blob = await response.blob();
-         if (!blob.type.startsWith('image/')) {
-            console.warn(`[ImageViewer] Fetched content for ${filePath} is not an image. Type: ${blob.type}. Displaying anyway.`);
-        }
-        const objectUrl = URL.createObjectURL(blob);
-        objectUrlsToRevoke.push(objectUrl);
+        if (savedPwd) {
+          console.log("[ImageViewer] Found saved password, attempting auto-decryption...");
+          // Directly pass encrypted payload and saved password to the helper
+          const config = decryptAndParsePayload(encryptedConfigParam, savedPwd);
 
-        if (index !== undefined) {
-          setGalleryItems(prev => prev.map((item, i) => i === index ? { path: filePath, src: objectUrl, isLoading: false, originalUrl: originalFileUrl } : item));
-        } else {
-          setSingleImageUrl(objectUrl);
+          if (config.serverUrl) {
+            setTempAlistConfig(config);
+            if (mode === 'gallery' && config.imagePaths && Array.isArray(config.imagePaths)) {
+              setDecryptedImagePaths(config.imagePaths);
+            }
+            setDecryptionPassword(savedPwd); // Pre-fill for consistency, though not strictly needed if prompt is bypassed
+            setShowPasswordPrompt(false);    // Bypass prompt
+            setTriedDecryption(true);       // Mark as successfully decrypted (via auto)
+            console.log("[ImageViewer] Auto-decryption successful with saved password.");
+            // Data loading will be triggered by the main useEffect due to tempAlistConfig change
+            return;
+          } else {
+            throw new Error("Invalid config structure from saved password during auto-decryption.");
+          }
         }
-      } catch (err: any) {
-        console.error(`[ImageViewer] Error fetching image for path ${filePath}:`, err);
-        if (index !== undefined) {
-          setGalleryItems(prev => prev.map((item, i) => i === index ? { ...item, isLoading: false, error: err.message, src: null, originalUrl: item.originalUrl } : item));
-        } else {
-          setError(`${t('imageViewer.loadImageError', 'Error loading image:')} ${err.message}`);
-          setSingleImageUrl(null);
-        }
-      } finally {
-        if (index === undefined) setIsLoading(false); // For single image mode
+      } catch (e) {
+        console.warn("[ImageViewer] Auto-decryption with saved password failed:", e);
+        try {
+          const savedPasswords = JSON.parse(localStorage.getItem('sharedLinkPasswords_v1') || '{}');
+          delete savedPasswords[encryptedConfigParam];
+          localStorage.setItem('sharedLinkPasswords_v1', JSON.stringify(savedPasswords));
+          console.log("[ImageViewer] Cleared bad/failed saved password for this link.");
+        } catch (lsError) { console.error("Error clearing bad password from localStorage", lsError); }
       }
-    };
-    
+      // If no saved password, or auto-decryption failed, ensure prompt is shown if it's an encrypted link and we don't have a config yet
+      if (encryptedConfigParam && !tempAlistConfig) {
+          setShowPasswordPrompt(true);
+      }
+    } else if (!encryptedConfigParam && !initialPasswordLoadAttempted) {
+      // For non-encrypted links, ensure prompt is not shown and mark check as done
+      setShowPasswordPrompt(false);
+      setInitialPasswordLoadAttempted(true);
+    }
+  }, [encryptedConfigParam, initialPasswordLoadAttempted, tempAlistConfig, mode, t]); // placeholderDecrypt is a pure function, not a reactive dependency
+
+  const objectUrlsToRevokeRef = useRef<string[]>([]);
+
+  const fetchAndSetImage = useCallback(async (filePath: string, index?: number) => {
+    if (index !== undefined) {
+      setGalleryItems(prev => prev.map((item, i) => i === index ? { ...item, isLoading: true, error: undefined } : item));
+    } else {
+      setIsLoading(true); // For single image mode
+      setError(null);
+    }
+
+    try {
+      if (!alistService) throw new Error(t('imageViewer.noAlistServiceErrorShort', 'Alist service not ready.'));
+      
+      const originalFileUrl = await alistService.getFileLink(filePath);
+      if (!originalFileUrl) throw new Error(t('imageViewer.failedToGetDirectUrlError', 'Failed to get direct URL.'));
+
+      const response = await fetch(originalFileUrl);
+      if (!response.ok) throw new Error(`${t('imageViewer.fetchFailedError', 'Fetch failed:')} ${response.status} ${response.statusText}`);
+      
+      const blob = await response.blob();
+      let typedBlob = blob;
+      const determinedMimeType = getMimeTypeByFilename(filePath);
+
+      if (determinedMimeType && (!blob.type || !blob.type.startsWith('image/'))) {
+        try {
+          typedBlob = new Blob([blob], { type: determinedMimeType });
+          console.log(`[ImageViewer] Corrected blob type for ${filePath} from ${blob.type || 'unknown'} to ${determinedMimeType}`);
+        } catch (blobError) {
+          console.error(`[ImageViewer] Error creating typed blob for ${filePath} with type ${determinedMimeType}:`, blobError);
+          // typedBlob remains the original blob in case of error
+        }
+      } else if (!blob.type || !blob.type.startsWith('image/')) {
+          console.warn(`[ImageViewer] Fetched content for ${filePath} (type: ${blob.type || 'unknown'}) is not an image and specific type not determined from extension. Displaying as is.`);
+      }
+      
+      const objectUrl = URL.createObjectURL(typedBlob);
+      objectUrlsToRevokeRef.current.push(objectUrl);
+
+      if (index !== undefined) {
+        setGalleryItems(prev => prev.map((item, i) => i === index ? { path: filePath, src: objectUrl, isLoading: false, originalUrl: originalFileUrl } : item));
+      } else {
+        setSingleImageUrl(objectUrl);
+      }
+    } catch (err: any) {
+      console.error(`[ImageViewer] Error fetching image for path ${filePath}:`, err);
+      if (index !== undefined) {
+        setGalleryItems(prev => prev.map((item, i) => i === index ? { ...item, isLoading: false, error: err.message, src: null, originalUrl: item.originalUrl } : item));
+      } else {
+        setError(`${t('imageViewer.loadImageError', 'Error loading image:')} ${err.message}`);
+        setSingleImageUrl(null);
+      }
+    } finally {
+      if (index === undefined) setIsLoading(false); // For single image mode
+    }
+  }, [alistService, t, setGalleryItems, setIsLoading, setError, setSingleImageUrl]);
+
+  useEffect(() => {
     const currentImagePathForEffect = mode === 'single' ? singleImagePathFromParam : null;
     const currentImagePathsForEffect = mode === 'gallery' ? (decryptedImagePaths || (searchParams.get('paths') ? JSON.parse(searchParams.get('paths') || '[]') : [])) : null;
 
-
-    if (encryptedConfigParam && showPasswordPrompt && !triedDecryption) {
-      setIsLoading(false); return;
+    // Wait for initial password check/auto-decrypt attempt before proceeding if encrypted
+    if (encryptedConfigParam && !initialPasswordLoadAttempted) {
+      setIsLoading(true); // Show loading while waiting for password check effect
+      return;
     }
-    if (encryptedConfigParam && triedDecryption && !tempAlistConfig && !localStorageAlistConfig.serverUrl) {
+    
+    // If encrypted, prompt is shown, and we haven't successfully set tempAlistConfig (manual or auto)
+    if (encryptedConfigParam && showPasswordPrompt && !tempAlistConfig) {
+      setIsLoading(false); // Not loading data, waiting for password
+      return;
+    }
+    // If encrypted, but decryption failed and no fallback
+    if (encryptedConfigParam && initialPasswordLoadAttempted && !tempAlistConfig && !localStorageAlistConfig.serverUrl) {
       setError(t('imageViewer.decryptionFailedNoFallback', 'Decryption failed and no local configuration available.'));
       setIsLoading(false); return;
     }
@@ -206,10 +340,10 @@ const ImageViewer: React.FC = () => {
         }
 
         if (pathsToLoad && pathsToLoad.length > 0) {
-          setIsLoading(true); 
-          setGalleryItems(pathsToLoad.map(p => ({ path: p, src: null, isLoading: true, error: undefined, originalUrl: undefined })));
-          Promise.allSettled(pathsToLoad.map((p, idx) => fetchAndSetImage(p, idx)))
-            .then(() => setIsLoading(false)); 
+          // Initialize galleryItems with all paths, but src and isLoading set to false initially
+          setGalleryItems(pathsToLoad.map(p => ({ path: p, src: null, isLoading: false, error: undefined, originalUrl: undefined })));
+          // setIsLoading(true) will be handled by the new useEffect for page-specific loading
+          // The actual fetching will be triggered by the new useEffect hook based on currentPage and itemsPerPage
         } else if (!encryptedConfigParam || (triedDecryption && tempAlistConfig && !tempAlistConfig.imagePaths)) {
           setError(t('imageViewer.galleryNoImages', 'No images specified for gallery view.'));
           setIsLoading(false);
@@ -223,19 +357,68 @@ const ImageViewer: React.FC = () => {
     }
 
     return () => {
-      objectUrlsToRevoke.forEach(url => {
+      objectUrlsToRevokeRef.current.forEach(url => {
         if (url) {
           console.log(`[ImageViewer] Revoking object URL: ${url}`);
           URL.revokeObjectURL(url);
         }
       });
+      // Clear the ref for next full load if component unmounts and remounts.
+      // Or, if this effect re-runs due to its dependencies changing in a way that implies a "reset".
+      // For now, let's clear it on unmount.
+      // objectUrlsToRevokeRef.current = []; // This might be too aggressive if other effects also use it.
+      // Let's only revoke. If the component unmounts and remounts, the ref will be fresh.
     };
   }, [
-    mode, singleImagePathFromParam, alistService, t, 
-    showPasswordPrompt, triedDecryption, encryptedConfigParam, 
-    localStorageAlistConfig.serverUrl, tempAlistConfig, 
-    decryptedImagePaths, searchParams // Added searchParams as it's used for 'paths'
+    mode, singleImagePathFromParam, alistService, t,
+    showPasswordPrompt, triedDecryption, encryptedConfigParam,
+    localStorageAlistConfig.serverUrl, tempAlistConfig,
+    decryptedImagePaths, searchParams, fetchAndSetImage // Added fetchAndSetImage
   ]);
+
+  // useEffect for loading gallery images up to numDisplayed
+  useEffect(() => {
+    if (mode !== 'gallery' || !alistService || galleryItems.length === 0 || (encryptedConfigParam && showPasswordPrompt && !triedDecryption)) {
+      setIsLoading(false); // Ensure loading is false if conditions not met for gallery loading
+      return;
+    }
+
+    const itemsToPotentiallyLoad = galleryItems.slice(0, numDisplayed);
+    let currentlyFetchingCount = 0;
+
+    itemsToPotentiallyLoad.forEach((item, index) => {
+      // Ensure we are checking the actual item in the full galleryItems array at this index
+      if (galleryItems[index] && !galleryItems[index].src && !galleryItems[index].error && !galleryItems[index].isLoading) {
+        fetchAndSetImage(galleryItems[index].path, index);
+        currentlyFetchingCount++;
+      } else if (galleryItems[index] && galleryItems[index].isLoading) {
+        currentlyFetchingCount++;
+      }
+    });
+
+    setIsLoadingMore(currentlyFetchingCount > 0);
+    // Set global isLoading: true if any of the *currently displayed or about to be displayed* items are loading.
+    // False if all *currently displayed* items are settled.
+    if (currentlyFetchingCount > 0) {
+      setIsLoading(true);
+    } else {
+      // Check if all items *up to numDisplayed* are settled (have src or error)
+      const allCurrentlyDisplayedSettled = galleryItems.slice(0, numDisplayed).every(it => it.src || it.error);
+      if (allCurrentlyDisplayedSettled) {
+        setIsLoading(false);
+      }
+      // If not all settled but nothing is fetching, it implies initial state or error state for some,
+      // global isLoading might remain true from initial page load until first batch settles.
+      // The fetchAndSetImage also manipulates isLoading for single items.
+    }
+
+  }, [numDisplayed, galleryItems, alistService, mode, showPasswordPrompt, triedDecryption, encryptedConfigParam, fetchAndSetImage]);
+
+
+  const handleLoadMore = () => {
+    if (isLoadingMore || numDisplayed >= galleryItems.length) return;
+    setNumDisplayed(prev => Math.min(prev + ITEMS_PER_LOAD, galleryItems.length));
+  };
 
 
   if (showPasswordPrompt && encryptedConfigParam) {
@@ -291,9 +474,9 @@ const ImageViewer: React.FC = () => {
       </div>
 
       {mode === 'single' && singleImageUrl && !error && (
-        <div className="w-full flex flex-col items-center">
-          <img 
-            src={singleImageUrl} 
+        <div className="w-full flex flex-col items-center dark:bg-black"> {/* Added dark:bg-black */}
+          <img
+            src={singleImageUrl}
             alt={singleImagePathFromParam || t('imageViewer.viewedImageAlt', 'Viewed Image')} 
             className="max-w-full max-h-[85vh] object-contain rounded shadow-lg cursor-zoom-in"
             onClick={() => openZoomModal(singleImageUrl, singleImagePathFromParam || 'Image')}
@@ -306,10 +489,12 @@ const ImageViewer: React.FC = () => {
 
       {mode === 'gallery' && galleryItems.length > 0 && (
         <div className="w-full">
-          <h2 className="text-2xl font-semibold mb-4 text-center">{t('imageViewer.galleryTitle', 'Image Gallery')} ({galleryItems.filter(item => item.src && !item.error).length}/{galleryItems.length})</h2>
+          <h2 className="text-2xl font-semibold mb-4 text-center">{t('imageViewer.galleryTitle', 'Image Gallery')} ({galleryItems.length})</h2>
           {error && <p className="text-red-500 text-center mb-4">{error}</p>}
+
+          {/* Pagination UI removed */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {galleryItems.map((item) => (
+            {galleryItems.slice(0, numDisplayed).map((item) => (
               <div key={item.path} className="border rounded-lg overflow-hidden shadow-lg dark:bg-slate-800 aspect-square flex flex-col">
                 <div className="flex-grow flex items-center justify-center overflow-hidden bg-gray-200 dark:bg-slate-700">
                   {item.isLoading && !item.src && (<Loader2 className="h-8 w-8 animate-spin" />)}
@@ -328,9 +513,27 @@ const ImageViewer: React.FC = () => {
               </div>
             ))}
           </div>
+          {mode === 'gallery' && galleryItems.length > 0 && (
+            <div className="w-full flex flex-col sm:flex-row justify-center items-center mt-8 mb-4 gap-4">
+              {numDisplayed < galleryItems.length && (
+                <Button onClick={handleLoadMore} disabled={isLoadingMore || isLoading}>
+                  {(isLoadingMore || (isLoading && galleryItems.slice(0, numDisplayed).some(i => i.isLoading && !i.src && !i.error))) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {t('imageViewer.loadMoreButton', 'Load More')} ({galleryItems.length - numDisplayed} {t('imageViewer.remaining', 'remaining')})
+                </Button>
+              )}
+              {numDisplayed < galleryItems.length && (
+                 <Button onClick={() => setNumDisplayed(galleryItems.length)} disabled={isLoadingMore || isLoading} variant="outline">
+                   {t('galleryLoadAllImages', 'Load All Images')} ({galleryItems.length})
+                 </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
-      {mode === 'gallery' && galleryItems.filter(item => !item.isLoading).length === 0 && !isLoading && !error && ( // Adjusted condition
+      {mode === 'gallery' && galleryItems.length > 0 && galleryItems.slice(0, numDisplayed).filter(item => !item.isLoading && !item.src && !item.error).length === numDisplayed && !isLoading && !error && (
+         <div className="w-full text-center mt-4"><p>{t('imageViewer.galleryAllAttemptedNoSuccess', 'Attempted to load images, but none could be displayed. Check paths or permissions.')}</p></div>
+      )}
+      {mode === 'gallery' && galleryItems.length === 0 && !isLoading && !error && (
          <div className="w-full text-center"><p>{t('imageViewer.galleryNoImagesLoaded', 'No images loaded for gallery view.')}</p></div>
       )}
 
@@ -345,13 +548,17 @@ const ImageViewer: React.FC = () => {
                 {/* The default X button from DialogContent will be to the right of this div */}
             </div>
           </DialogHeader>
-          <div className="flex-grow flex items-center justify-center overflow-auto relative pt-2"> {/* Added pt-2 for a bit of space from header */}
+          <div className={`w-full flex-grow relative overflow-auto pt-2 ${zoomLevel <= 1 ? 'flex items-center justify-center' : ''} dark:bg-black`}> {/* Conditionally apply flex centering */}
             {zoomedImageSrc && (
-              <img 
-                src={zoomedImageSrc} 
-                alt={zoomedImageAlt} 
-                className="max-w-full max-h-full object-contain transition-transform duration-200 ease-out"
-                style={{ transform: `scale(${zoomLevel})` }}
+              <img
+                src={zoomedImageSrc}
+                alt={zoomedImageAlt}
+                className={`transition-transform duration-200 ease-out ${zoomLevel <= 1 ? 'max-w-full max-h-full object-contain' : 'cursor-grab active:cursor-grabbing'}`} // Restore conditional classes
+                style={{
+                  transform: `scale(${zoomLevel})`,
+                  transformOrigin: zoomLevel <= 1 ? 'center center' : '0 0', // Change origin when zoomed in
+                  display: 'block'
+                }}
               />
             )}
           </div>

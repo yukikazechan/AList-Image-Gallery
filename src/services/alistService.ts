@@ -209,9 +209,9 @@ export class AlistService {
   }
 
   // 获取文件列表
-  async listFiles(path: string, password?: string): Promise<FileInfo[]> {
+  async listFiles(path: string, password?: string, page?: number, per_page?: number): Promise<ListResponse> {
     try {
-      console.log('Listing files at path:', path, password ? "with password" : (this.isPublicClient ? "as public client" : "without directory password"));
+      console.log('Listing files at path:', path, password ? "with password" : (this.isPublicClient ? "as public client" : "without directory password"), `page: ${page}`, `per_page: ${per_page}`);
       if (!this.isPublicClient && !this.token && typeof this.username === 'string' && typeof this.password === 'string') {
         await this._login();
       }
@@ -223,11 +223,24 @@ export class AlistService {
       if (password) {
         requestBody.password = password;
       }
+      if (page !== undefined) {
+        requestBody.page = page;
+      }
+      if (per_page !== undefined) {
+        requestBody.per_page = per_page;
+      }
 
       const response = await this.client.post('/api/fs/list', requestBody);
       
-      if (response.data && response.data.code === 200 && response.data.data && response.data.data.content) {
-        return response.data.data.content;
+      if (response.data && response.data.code === 200 && response.data.data) {
+        // Ensure the response matches the ListResponse interface
+        return {
+          content: response.data.data.content || [],
+          total: response.data.data.total || 0,
+          readme: response.data.data.readme || "",
+          write: response.data.data.write || false,
+          provider: response.data.data.provider || ""
+        };
       } else {
         console.log('Response structure (listFiles):', JSON.stringify(response.data));
         if (response.data && response.data.code === 401) {
@@ -250,7 +263,8 @@ export class AlistService {
         if (response.data && response.data.code !== 200) {
           throw new Error(`Server error (listFiles): ${response.data.message || 'Unknown error'}`);
         }
-        return []; // Should be covered by specific error throws above
+        // Fallback for unexpected structure, though ideally API is consistent
+        throw new Error('Server error (listFiles): API response data structure is not as expected.');
       }
     } catch (error: any) {
       console.error('Error listing files:', error.message);
@@ -260,7 +274,7 @@ export class AlistService {
   }
 
   // 上传文件
-  async uploadFile(path: string, file: File): Promise<any> {
+  async uploadFile(path: string, file: File, desiredFileNameOnServer?: string): Promise<any> {
     try {
       // Upload always requires authentication
       if (this.isPublicClient) {
@@ -273,7 +287,8 @@ export class AlistService {
         throw new Error("Not authenticated for uploadFile. Token is missing.");
       }
 
-      const fullPath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
+      const actualFileName = desiredFileNameOnServer || file.name;
+      const fullPath = `${path}${path.endsWith('/') ? '' : '/'}${actualFileName}`;
       const encodedFullPath = encodeURIComponent(fullPath);
 
       const response = await this.client.put(`/api/fs/put`, file, {

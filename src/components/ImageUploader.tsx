@@ -44,9 +44,9 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const { t } = useTranslation(); 
   const [isUploading, setIsUploading] = useState(false);
   const [files, setFiles] = useState<FileList | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null); 
-  const [uploadedImageHttpUrls, setUploadedImageHttpUrls] = useState<string[]>([]); 
-  const [imagePreviewSources, setImagePreviewSources] = useState<Record<string, string>>({}); 
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [uploadedImageHttpUrls, setUploadedImageHttpUrls] = useState<string[]>([]);
+  const [imagePreviewSources, setImagePreviewSources] = useState<Record<string, string>>({});
   const [directories, setDirectories] = useState<FileInfo[]>([]);
   const [isLoadingDirs, setIsLoadingDirs] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -59,6 +59,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const [showManualCopyDialog, setShowManualCopyDialog] = useState<boolean>(false);
   const [linkToCopyManually, setLinkToCopyManually] = useState<string | null>(null);
   const manualCopyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null); // Ref for hidden folder input
 
   useEffect(() => {
     if (showManualCopyDialog && manualCopyTextareaRef.current) {
@@ -78,7 +79,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       // Use directoryPasswords for the currentPath if available
       const passwordForPath = directoryPasswords[currentPath];
       const fetchedFiles = await alistService.listFiles(currentPath, passwordForPath);
-      setDirectories(fetchedFiles.filter(file => file.is_dir));
+      setDirectories(fetchedFiles.content.filter(file => file.is_dir));
     } catch (error: any) {
       console.error("Error loading directories in ImageUploader:", error);
       const errorMessage = error.message || t('imageUploaderUnknownLoadingError');
@@ -121,28 +122,100 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   };
 
+  // Helper function to determine MIME type from filename extension
+  const getMimeTypeByFilename = (filename: string): string | undefined => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    if (!ext) return undefined;
+    switch (ext) {
+      case 'jpg': case 'jpeg': return 'image/jpeg';
+      case 'png': return 'image/png';
+      case 'gif': return 'image/gif';
+      case 'webp': return 'image/webp';
+      case 'bmp': return 'image/bmp';
+      case 'avif': return 'image/avif';
+      case 'jxl': return 'image/jxl';
+      // Add other image types if necessary
+      default: return undefined;
+    }
+  };
+
   const handleUpload = useCallback(async () => {
     if (!alistService || !files || files.length === 0) return;
-    
+
     setIsUploading(true);
     setUploadedImageHttpUrls([]);
     setImagePreviewSources({});
     const newUploadedAlistPaths: string[] = [];
     const newPreviewSources: Record<string, string> = {};
     let anyUploadSucceeded = false;
+    const createdRemoteDirsThisSession = new Set<string>();
+
+    // Helper function to ensure remote path exists
+    const ensureRemotePathExists = async (basePath: string, relativePath: string): Promise<string> => {
+      if (!relativePath) return basePath; // No sub-directory specified
+
+      const segments = relativePath.split('/').filter(s => s.length > 0);
+      let currentCumulativePath = basePath;
+
+      for (const segment of segments) {
+        let nextPathToEnsure = currentCumulativePath === '/' ? `/${segment}` : `${currentCumulativePath}/${segment}`;
+        // Normalize: remove trailing slash if any, except for root
+        if (nextPathToEnsure !== '/' && nextPathToEnsure.endsWith('/')) {
+            nextPathToEnsure = nextPathToEnsure.slice(0, -1);
+        }
+
+        if (!createdRemoteDirsThisSession.has(nextPathToEnsure)) {
+          try {
+            console.log(`Attempting to create folder: parentPath="${currentCumulativePath}", name="${segment}" (full: ${nextPathToEnsure})`);
+            await alistService.createFolder(currentCumulativePath, segment);
+            createdRemoteDirsThisSession.add(nextPathToEnsure);
+            toast.info(t('imageUploaderFolderCreatedLog', { folderName: segment }) || `Created remote folder: ${segment}`);
+          } catch (e: any) {
+            // AList might error if folder exists, or might succeed silently.
+            // We'll assume if error, it might be "already exists" or a real problem.
+            // A more robust check would inspect the error code/message if Alist provides it.
+            // For now, we add to set to avoid retrying, and log warning.
+            if (e.message && (e.message.includes("exist") || e.message.includes("file already exists"))) {
+                 console.warn(`Folder ${nextPathToEnsure} likely already exists or conflict:`, e.message);
+                 createdRemoteDirsThisSession.add(nextPathToEnsure); // Assume it exists now
+            } else {
+                console.error(`Failed to create remote directory ${nextPathToEnsure}:`, e);
+                toast.error(t('imageUploaderCreateRemoteFolderError', { folderName: segment, error: e.message }) || `Error creating remote folder ${segment}: ${e.message}`);
+                throw e; // Propagate error to stop upload for this file if path can't be made
+            }
+          }
+        }
+        currentCumulativePath = nextPathToEnsure;
+      }
+      return currentCumulativePath; // This is the final directory for the file
+    };
 
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      const file = files[i] as File & { webkitRelativePath?: string }; // Type assertion for webkitRelativePath
+
       if (!file.type.startsWith("image/")) {
         toast.warning(t('imageUploaderSkippingNonImage', { fileName: file.name }));
         continue;
       }
+
+      const relativePath = file.webkitRelativePath || file.name;
+      const lastSlashIndex = relativePath.lastIndexOf('/');
+      const relativeDir = lastSlashIndex > -1 ? relativePath.substring(0, lastSlashIndex) : "";
+      const fileName = lastSlashIndex > -1 ? relativePath.substring(lastSlashIndex + 1) : relativePath;
+      
       try {
-        toast.info(t('imageUploaderUploadingFile', { fileName: file.name, current: i + 1, total: files.length }));
-        // Directory password is not typically used for upload; auth is via token
-        await alistService.uploadFile(currentPath, file);
+        toast.info(t('imageUploaderUploadingFile', { fileName: fileName, current: i + 1, total: files.length }) + (relativeDir ? ` to ${relativeDir}`: ""));
         
-        const uploadedAlistPath = `${currentPath === '/' ? '' : currentPath}/${file.name}`;
+        const targetUploadDir = await ensureRemotePathExists(currentPath, relativeDir);
+        
+        const originalFileType = file.type; // From the original File object from browser
+        const typeFromExtension = getMimeTypeByFilename(fileName);
+        const determinedMimeType = typeFromExtension || originalFileType || 'application/octet-stream'; // Fallback strategy
+
+        // Pass fileName explicitly as the desired name on server, and use determinedMimeType
+        await alistService.uploadFile(targetUploadDir, new File([file], fileName, {type: determinedMimeType}), fileName);
+
+        const uploadedAlistPath = `${targetUploadDir === '/' ? '' : targetUploadDir}/${fileName}`;
         newUploadedAlistPaths.push(uploadedAlistPath);
 
         try {
@@ -151,20 +224,19 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
                 const imgResponse = await fetch(directLink);
                 if (!imgResponse.ok) {
                     console.warn(`[ImageUploader] Failed to fetch preview for ${uploadedAlistPath} (status: ${imgResponse.status})`);
-                    // Still add Alist path, preview will fail gracefully or not show
                 } else {
                     const blob = await imgResponse.blob();
                     newPreviewSources[uploadedAlistPath] = URL.createObjectURL(blob);
                 }
             }
         } catch (previewError) {
-            console.warn(`[ImageUploader] Could not get direct link or fetch preview for ${uploadedAlistPath}:`, previewError);
+            console.warn(`[ImageUploader] Could not get/fetch preview for ${uploadedAlistPath}:`, previewError);
         }
         anyUploadSucceeded = true;
-        toast.success(`${file.name} ${t('uploadSuccess')}`);
+        toast.success(`${fileName} ${t('uploadSuccess')}`);
       } catch (error: any) {
-        console.error("Upload error for file " + file.name + ":", error);
-        toast.error(t('imageUploaderUploadFailedForFile', { fileName: file.name, error: error.message }));
+        console.error(`Upload error for file ${fileName} (path: ${relativePath}):`, error);
+        toast.error(t('imageUploaderUploadFailedForFile', { fileName: fileName, error: error.message }));
       }
     }
     setUploadedImageHttpUrls(newUploadedAlistPaths);
@@ -172,9 +244,9 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     setIsUploading(false);
     if (anyUploadSucceeded) {
         onUploadSuccess();
+        loadDirectories(); // Refresh directory listing after successful uploads
     }
-    // Consider if loadDirectories() should be called here to refresh folder list (e.g., if new files affect dir display)
-  }, [alistService, files, currentPath, onUploadSuccess, t, directoryPasswords]);
+  }, [alistService, files, currentPath, onUploadSuccess, t, directoryPasswords, loadDirectories]);
   
   const handleOpenEncryptShareDialogForUploader = (alistPath: string) => {
     setAlistPathToShareFromUploader(alistPath);
@@ -348,11 +420,47 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
               )}
             </div>
           </div>
-          <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-lg p-6 bg-gray-50 dark:bg-slate-800">
-            <Input type="file" accept="image/*" multiple onChange={handleFileChange} className="mb-4" disabled={!!connectionError} />
-            {(!files || files.length === 0) && (<p className="text-sm text-gray-500 dark:text-slate-400 mt-2">{t('imageUploaderNoFileSelected')}</p>)}
-            {imagePreviewUrl && (<div className="mt-4"><img src={imagePreviewUrl} alt="Preview" className="max-h-64 max-w-full rounded-lg"/></div>)}
-            <Button onClick={handleUpload} disabled={!files || isUploading || !!connectionError} className="mt-4">
+          <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-lg p-6 bg-gray-50 dark:bg-slate-800 space-y-4">
+            <p className="text-sm text-gray-600 dark:text-slate-300">{t('imageUploaderSelectPrompt', 'Select image files or a folder to upload:')}</p>
+            <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md">
+              <Input // For selecting individual files
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileChange}
+                className="flex-grow"
+                disabled={!!connectionError || isUploading}
+              />
+              <Button // For selecting a folder
+                type="button"
+                variant="outline"
+                onClick={() => folderInputRef.current?.click()}
+                disabled={!!connectionError || isUploading}
+                className="flex-grow sm:flex-grow-0"
+              >
+                <FolderOpen className="mr-2 h-4 w-4" /> {t('imageUploaderUploadFolderButton', 'Select Folder')}
+              </Button>
+            </div>
+            {/* Hidden input for folder selection */}
+            <Input
+              ref={folderInputRef}
+              type="file"
+              accept="image/*" // accept might be ignored by browser with webkitdirectory
+              multiple
+              // @ts-ignore
+              webkitdirectory=""
+              directory=""
+              onChange={handleFileChange}
+              className="hidden"
+              disabled={!!connectionError || isUploading}
+            />
+            {(!files || files.length === 0) && (<p className="text-sm text-gray-500 dark:text-slate-400">{t('imageUploaderNoFileSelected')}</p>)}
+            {imagePreviewUrl && ( // This preview shows the first selected file, mainly for individual file selection
+              <div className="mt-2">
+                <img src={imagePreviewUrl} alt="Preview" className="max-h-48 max-w-full rounded-lg"/>
+              </div>
+            )}
+            <Button onClick={handleUpload} disabled={!files || isUploading || !!connectionError} className="w-full sm:w-auto">
               {isUploading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t('imageUploaderUploading')}</>) : (<><Upload className="mr-2 h-4 w-4" />{t('imageUploaderUploadTo', { path: currentPath })}</>)}
             </Button>
           </div>
