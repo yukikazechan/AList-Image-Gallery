@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,11 +15,15 @@ interface TokenInputProps {
   initialUsername?: string;
   initialPassword?: string;
   initialR2CustomDomain?: string; // New prop
+  initialYourlsUrl?: string; // New prop for YOURLS URL
+  initialYourlsToken?: string; // New prop for YOURLS Token
   isUpdate?: boolean;
   onSubmit: (
     authDetails: { token: string } | { username?: string; password?: string },
     serverUrl: string,
-    r2CustomDomain?: string // New parameter in onSubmit
+    r2CustomDomain?: string, // New parameter in onSubmit
+    yourlsUrl?: string, // New parameter for YOURLS URL
+    yourlsToken?: string // New parameter for YOURLS Token
   ) => void;
 }
 
@@ -32,6 +35,8 @@ const TokenInput: React.FC<TokenInputProps> = ({
   initialUsername = "",
   initialPassword = "",
   initialR2CustomDomain = "", // Initialize new prop
+  initialYourlsUrl = "", // Initialize new prop for YOURLS URL
+  initialYourlsToken = "", // Initialize new prop for YOURLS Token
   isUpdate = false,
   onSubmit,
 }) => {
@@ -41,6 +46,8 @@ const TokenInput: React.FC<TokenInputProps> = ({
   const [username, setUsername] = useState<string>(initialUsername);
   const [password, setPassword] = useState<string>(initialPassword);
   const [r2CustomDomain, setR2CustomDomain] = useState<string>(initialR2CustomDomain); // New state
+  const [yourlsUrl, setYourlsUrl] = useState<string>(initialYourlsUrl); // New state for YOURLS URL
+  const [yourlsToken, setYourlsToken] = useState<string>(initialYourlsToken); // New state for YOURLS Token
   const [authMode, setAuthMode] = useState<AuthMode>("token");
   const [isValidating, setIsValidating] = useState<boolean>(false);
   const [isGuestConnecting, setIsGuestConnecting] = useState<boolean>(false); // New state for guest button loading
@@ -108,7 +115,7 @@ const TokenInput: React.FC<TokenInputProps> = ({
       const isValid = await serviceToTest.testConnection();
 
       if (isValid) {
-        onSubmit(authDetails, urlWithProtocol, r2CustomDomain.trim()); // Pass r2CustomDomain
+        onSubmit(authDetails, urlWithProtocol, r2CustomDomain.trim(), yourlsUrl.trim(), yourlsToken.trim()); // Pass r2CustomDomain and YOURLS details
         toast.success(t("tokenInputConnectionSuccessful"));
       } else {
         const errorMsg = t("tokenInputConnectionFailed");
@@ -137,7 +144,7 @@ const TokenInput: React.FC<TokenInputProps> = ({
     try {
       // Call the onSubmit prop with guest credentials directly
       // Do NOT set the input field states to maintain privacy
-      await onSubmit({ username: guestUsername, password: guestPassword }, guestServerUrl, "");
+      await onSubmit({ username: guestUsername, password: guestPassword }, guestServerUrl, "", "", ""); // Pass empty strings for YOURLS
 
       // onSubmit will handle success toast and state updates
     } catch (error: any) {
@@ -210,6 +217,34 @@ const TokenInput: React.FC<TokenInputProps> = ({
                 disabled={isValidating}
               />
               <p className="text-xs text-gray-500">{t("tokenInputR2CustomDomainHint")}</p>
+            </div>
+
+:start_line:222
+-------
+            {/* YOURLS Settings */}
+            <div className="flex flex-col space-y-1.5">
+              <Label htmlFor="yourlsUrl">{t("tokenInputYourlsUrlLabel")}</Label>
+              <Input
+                id="yourlsUrl"
+                placeholder={t("tokenInputYourlsUrlPlaceholder")}
+                value={yourlsUrl}
+                onChange={(e) => setYourlsUrl(e.target.value)}
+                disabled={isValidating}
+              />
+              <p className="text-xs text-gray-500">{t("tokenInputYourlsUrlHint")}</p>
+            </div>
+
+            <div className="flex flex-col space-y-1.5">
+              <Label htmlFor="yourlsToken">{t("tokenInputYourlsTokenLabel")}</Label>
+              <Input
+                id="yourlsToken"
+                type="password"
+                placeholder={t("tokenInputYourlsTokenPlaceholder")}
+                value={yourlsToken}
+                onChange={(e) => setYourlsToken(e.target.value)}
+                disabled={isValidating}
+              />
+              <p className="text-xs text-gray-500">{t("tokenInputYourlsTokenHint")}</p>
             </div>
 
             <div className="flex flex-col space-y-1.5">

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -15,7 +14,9 @@ const Index = () => {
   const [username, setUsername] = useState<string>(localStorage.getItem("alist_username") || "");
   const [password, setPassword] = useState<string>(localStorage.getItem("alist_password") || "");
   const [serverUrl, setServerUrl] = useState<string>(localStorage.getItem("alist_server_url") || "");
-  const [r2CustomDomain, setR2CustomDomain] = useState<string>(localStorage.getItem("alist_r2_custom_domain") || ""); // New state
+  const [r2CustomDomain, setR2CustomDomain] = useState<string>(localStorage.getItem("alist_r2_custom_domain") || "");
+  const [yourlsUrl, setYourlsUrl] = useState<string>(localStorage.getItem("yourls_url") || "");
+  const [yourlsToken, setYourlsToken] = useState<string>(localStorage.getItem("yourls_token") || "");
   const [path, setPath] = useState<string>("/");
   const [activeTab, setActiveTab] = useState<string>("upload");
   const [connectionVerified, setConnectionVerified] = useState<boolean>(false);
@@ -64,7 +65,7 @@ const Index = () => {
       }
     }
     return null;
-  }, [token, username, password, serverUrl, authMethod, r2CustomDomain]); // Added r2CustomDomain
+  }, [token, username, password, serverUrl, authMethod, r2CustomDomain]);
 
   useEffect(() => {
     // Update localStorage whenever auth details or server URL change
@@ -84,12 +85,24 @@ const Index = () => {
       } else {
         localStorage.removeItem("alist_r2_custom_domain");
       }
+      if (yourlsUrl) {
+        localStorage.setItem("yourls_url", yourlsUrl);
+      } else {
+        localStorage.removeItem("yourls_url");
+      }
+      if (yourlsToken) {
+        localStorage.setItem("yourls_token", yourlsToken);
+      } else {
+        localStorage.removeItem("yourls_token");
+      }
     } else {
       localStorage.removeItem("alist_token");
       localStorage.removeItem("alist_username");
       localStorage.removeItem("alist_password");
       localStorage.removeItem("alist_server_url");
       localStorage.removeItem("alist_r2_custom_domain");
+      localStorage.removeItem("yourls_url");
+      localStorage.removeItem("yourls_token");
     }
 
     // Test connection whenever alistService instance changes
@@ -111,15 +124,19 @@ const Index = () => {
     } else {
       setConnectionVerified(false);
     }
-  }, [alistService, token, username, password, serverUrl, authMethod, r2CustomDomain, t]); // Added r2CustomDomain
+  }, [alistService, token, username, password, serverUrl, authMethod, r2CustomDomain, yourlsUrl, yourlsToken, t]);
 
   const handleConnectionSubmit = (
     authDetails: { token: string } | { username?: string; password?: string },
     newServerUrl: string,
-    newR2CustomDomain?: string // New parameter
+    newR2CustomDomain?: string,
+    newYourlsUrl?: string,
+    newYourlsToken?: string
   ) => {
     setServerUrl(newServerUrl);
-    setR2CustomDomain(newR2CustomDomain || ""); // Set new R2 custom domain
+    setR2CustomDomain(newR2CustomDomain || "");
+    setYourlsUrl(newYourlsUrl || "");
+    setYourlsToken(newYourlsToken || "");
     if ("token" in authDetails) {
       setToken(authDetails.token);
       setUsername(""); // Clear other auth method
@@ -159,7 +176,9 @@ const Index = () => {
             initialServerUrl={serverUrl}
             initialUsername={username}
             initialPassword={password}
-            initialR2CustomDomain={r2CustomDomain} // Pass initialR2CustomDomain
+            initialR2CustomDomain={r2CustomDomain}
+            initialYourlsUrl={yourlsUrl}
+            initialYourlsToken={yourlsToken}
             onSubmit={handleConnectionSubmit}
             isUpdate={!!((token || username) && serverUrl)} // Show as update if any credential exists
           />
@@ -199,7 +218,9 @@ const Index = () => {
                 initialServerUrl={serverUrl}
                 initialUsername={username}
                 initialPassword={password}
-                initialR2CustomDomain={r2CustomDomain} // Pass initialR2CustomDomain
+                initialR2CustomDomain={r2CustomDomain}
+                initialYourlsUrl={yourlsUrl}
+                initialYourlsToken={yourlsToken}
                 onSubmit={handleConnectionSubmit}
                 isUpdate={true}
               />

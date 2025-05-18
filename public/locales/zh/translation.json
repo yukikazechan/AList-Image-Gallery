@@ -239,5 +239,11 @@
   "paginationNext": "下一页",
   "galleryLoadAllImages": "加载全部图片",
   "galleryAllImagesLoaded": "已加载全部 {{count}} 张图片。",
-  "galleryErrorLoadingAllFiles": "加载全部文件错误："
+  "galleryErrorLoadingAllFiles": "加载全部文件错误：",
+  "tokenInputYourlsUrlLabel": "YOURLS 服务器 URL (可选)",
+  "tokenInputYourlsUrlPlaceholder": "例如: https://yourls.yourdomain.com",
+  "tokenInputYourlsUrlHint": "填写 YOURLS 服务器的 API 地址。",
+  "tokenInputYourlsTokenLabel": "YOURLS 密钥签名令牌 (可选)",
+  "tokenInputYourlsTokenPlaceholder": "输入您的 YOURLS 密钥签名令牌",
+  "tokenInputYourlsTokenHint": "从 YOURLS 后台获取。"
 }

@@ -147,27 +147,22 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     setSelectedFilePaths([]);
     setCurrentPage(1);
     setTotalPages(1);
-    // setFiles([]); // This is now handled inside loadFiles when pageToLoad is 1
     if (alistService) {
       loadFiles(path, directoryPasswords[path], 1);
     } else {
-      setFiles([]); // Explicitly clear if no service
-      setLoading(false); // Ensure loading is false if no service
+      setFiles([]); 
+      setLoading(false); 
     }
-    // Cleanup function for blob URL
     return () => {
       if (currentImageUrl && currentImageUrl.startsWith('blob:')) {
         URL.revokeObjectURL(currentImageUrl);
       }
     };
-  }, [alistService, path, loadFiles, directoryPasswords]); // Added loadFiles and directoryPasswords
+  }, [alistService, path, loadFiles, directoryPasswords]);
 
   const handlePasswordSubmit = () => {
     if (!passwordPromptPath || !currentPasswordInput) return;
     setDirectoryPasswords(prev => ({ ...prev, [passwordPromptPath]: currentPasswordInput }));
-    // The useEffect above will trigger loadFiles due to directoryPasswords changing,
-    // assuming passwordPromptPath is the current path.
-    // For immediate effect or if paths differ, explicitly call:
     loadFiles(passwordPromptPath, currentPasswordInput, 1);
   };
 
@@ -212,7 +207,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
 
   const handleOpenEncryptShareDialog = (file: FileInfo) => { setFileToShare(file); setShareEncryptionPassword(""); setShowEncryptShareDialog(true); };
 
-  const handleCreateEncryptedShareLink = () => {
+  const handleCreateEncryptedShareLink = async () => {
     if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing', 'Alist service is not available.')); return; }
     if (!fileToShare || !shareEncryptionPassword) { toast.error(t('galleryErrorPasswordForEncryption')); return; }
     const serverUrl = alistService.getBaseUrl();
@@ -225,19 +220,19 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       const encryptedConfig = placeholderEncrypt(JSON.stringify(configToEncrypt), shareEncryptionPassword);
       if (!encryptedConfig) { toast.error(t('galleryErrorEncryptionFailed')); return; }
       const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${fileToShare.name}`;
-      const viewerLink = `${window.location.origin}/view?path=${encodeURIComponent(alistFilePath)}&c=${encodeURIComponent(encryptedConfig)}`;
+      let viewerLink = `${window.location.origin}/view?path=${encodeURIComponent(alistFilePath)}&c=${encodeURIComponent(encryptedConfig)}`;
+      viewerLink = await alistService.getShortUrl(viewerLink); // Attempt to get short URL
       navigator.clipboard.writeText(viewerLink)
         .then(() => {
           toast.success(t('galleryEncryptedLinkCopied') + (isMobile ? " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.') : ""));
           toast.info(t('gallerySharePasswordReminder'));
-          // Always show manual copy dialog as a reliable option
           setManualCopyLink(viewerLink);
           setShowManualCopyDialog(true);
         })
         .catch(err => {
           console.error('Failed to copy encrypted link: ', err);
           toast.error(t('galleryErrorCopyingLinkGeneric', 'Failed to copy link. You may need to do it manually.'));
-          setManualCopyLink(viewerLink); // Show dialog on error for all platforms
+          setManualCopyLink(viewerLink); 
           setShowManualCopyDialog(true);
         });
       setShowEncryptShareDialog(false); setFileToShare(null);
@@ -254,9 +249,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       if (fileEntry) {
         if (fileEntry.is_dir) {
           try {
-            // For simplicity, assume listFiles without pagination for resolving all images in a folder for share
-            // If folders can be extremely large, this might need its own pagination or a different strategy
-            const dirResponse = await alistService.listFiles(selectedPath, directoryPasswords[selectedPath]); // No pagination for full resolve
+            const dirResponse = await alistService.listFiles(selectedPath, directoryPasswords[selectedPath]); 
             dirResponse.content.filter(isImageFile).forEach(imgFile => {
               resolvedImagePaths.push(`${selectedPath}${selectedPath.endsWith('/') ? '' : '/'}${imgFile.name}`);
             });
@@ -281,7 +274,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     setShowMultiShareEncryptDialog(true);
   };
   
-  const handleCreateEncryptedMultiShareLink = () => {
+  const handleCreateEncryptedMultiShareLink = async () => {
     if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing', 'Alist service is not available.')); return; }
     if (imagePathsForGalleryShare.length === 0 || !multiShareEncryptionPassword) { toast.error(t('galleryErrorPasswordOrFilesForMultiShare')); return; }
     const serverUrl = alistService.getBaseUrl();
@@ -289,22 +282,18 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     const r2CustomDomain = alistService.getR2CustomDomain();
     if (!serverUrl) { toast.error(t('galleryErrorAlistConfigMissingForShare', 'Alist server URL is not configured (from service).')); return; }
     let authDetailsToEncrypt: AuthDetails | null = token ? { token } : (alistService.getIsPublicClient() ? null : null);
-    // Add a version/compression marker to the config before stringifying and compressing
     const configToEncrypt: AlistConfigToShare & { v?: number; comp?: string } = {
       serverUrl,
       authDetails: authDetailsToEncrypt,
       r2CustomDomain,
       imagePaths: imagePathsForGalleryShare,
-      v: 2, // Version marker for potentially compressed payload
-      comp: 'pako_b64' // Compression method marker
+      v: 2, 
+      comp: 'pako_b64' 
     };
     try {
       const jsonString = JSON.stringify(configToEncrypt);
-      const compressedData = pako.deflate(jsonString); // Returns Uint8Array
-      
-      // Convert Uint8Array to a binary string for btoa
+      const compressedData = pako.deflate(jsonString); 
       let binaryString = '';
-      // Avoid String.fromCharCode.apply due to potential stack overflow with large arrays
       const chunkSize = 8192;
       for (let i = 0; i < compressedData.length; i += chunkSize) {
         binaryString += String.fromCharCode.apply(null, Array.from(compressedData.subarray(i, i + chunkSize)));
@@ -313,19 +302,19 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
 
       const encryptedConfig = placeholderEncrypt(base64Compressed, multiShareEncryptionPassword);
       if (!encryptedConfig) { toast.error(t('galleryErrorEncryptionFailed')); return; }
-      const viewerLink = `${window.location.origin}/view?type=gallery&c=${encodeURIComponent(encryptedConfig)}`;
+      let viewerLink = `${window.location.origin}/view?type=gallery&c=${encodeURIComponent(encryptedConfig)}`;
+      viewerLink = await alistService.getShortUrl(viewerLink); // Attempt to get short URL
       navigator.clipboard.writeText(viewerLink)
         .then(() => {
           toast.success(t('galleryMultiEncryptedLinkCopied') + (isMobile ? " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.') : ""));
           toast.info(t('gallerySharePasswordReminder'));
-          // Always show manual copy dialog as a reliable option
           setManualCopyLink(viewerLink);
           setShowManualCopyDialog(true);
         })
         .catch(err => {
           console.error('Failed to copy multi-share encrypted link: ', err);
           toast.error(t('galleryErrorCopyingLinkGeneric', 'Failed to copy link. You may need to do it manually.'));
-          setManualCopyLink(viewerLink); // Show dialog on error for all platforms
+          setManualCopyLink(viewerLink); 
           setShowManualCopyDialog(true);
         });
       setShowMultiShareEncryptDialog(false); setSelectedFilePaths([]); setImagePathsForGalleryShare([]);
@@ -334,53 +323,71 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
 
   const generateViewerLink = (filePath: string) => `${window.location.origin}/view?path=${encodeURIComponent(filePath)}`;
   
-  const copyHelper = (contentToCopy: string, successMsgKey: string, errorMsgKey: string = 'galleryErrorCopyingLinkGeneric') => {
-    navigator.clipboard.writeText(contentToCopy)
+  const copyHelper = async (contentToCopy: string, successMsgKey: string, errorMsgKey: string = 'galleryErrorCopyingLinkGeneric', isRawLink: boolean = false) => {
+    if (!alistService) {
+      toast.error(t('galleryErrorAlistServiceMissing', 'Alist service is not available.'));
+      setManualCopyLink(contentToCopy); 
+      setShowManualCopyDialog(true);
+      return;
+    }
+
+    let finalLink = contentToCopy;
+    if (!isRawLink) { 
+      finalLink = await alistService.getShortUrl(contentToCopy);
+    }
+
+    navigator.clipboard.writeText(finalLink)
       .then(() => {
         toast.success(t(successMsgKey) + (isMobile ? " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.') : ""));
-        // Always show manual copy dialog as a reliable option
-        setManualCopyLink(contentToCopy);
+        setManualCopyLink(finalLink);
         setShowManualCopyDialog(true);
       })
       .catch(err => {
         console.error(`Failed to copy (${successMsgKey}): `, err);
         toast.error(t(errorMsgKey, 'Failed to copy link. You may need to do it manually.'));
-        setManualCopyLink(contentToCopy); // Show dialog on error for all platforms
+        setManualCopyLink(finalLink); 
         setShowManualCopyDialog(true);
       });
   };
 
-  const handleCopyLink = (file: FileInfo) => {
+  const handleCopyLink = async (file: FileInfo) => {
     const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
     const viewerLink = generateViewerLink(alistFilePath);
-    if (viewerLink) copyHelper(viewerLink, 'imageLinkCopied');
+    if (viewerLink) await copyHelper(viewerLink, 'imageLinkCopied');
     else toast.error(t('galleryErrorCopyingLink'));
   };
 
-  const handleCopyMarkdownLink = (file: FileInfo) => {
+  const handleCopyMarkdownLink = async (file: FileInfo) => {
+    if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing')); return; }
     const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
     const viewerLink = generateViewerLink(alistFilePath);
-    if(viewerLink) copyHelper(`![${file.name}](${viewerLink})`, 'markdownLinkCopied');
+    const shortViewerLink = await alistService.getShortUrl(viewerLink);
+    if(shortViewerLink) await copyHelper(`![${file.name}](${shortViewerLink})`, 'markdownLinkCopied');
     else toast.error(t('galleryErrorCopyingMarkdownLink'));
   };
 
-  const handleCopyHtmlLink = (file: FileInfo) => {
+  const handleCopyHtmlLink = async (file: FileInfo) => {
+    if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing')); return; }
     const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
     const viewerLink = generateViewerLink(alistFilePath);
-    if(viewerLink) copyHelper(`<img src="${viewerLink}" alt="${file.name}">`, 'htmlLinkCopied');
+    const shortViewerLink = await alistService.getShortUrl(viewerLink);
+    if(shortViewerLink) await copyHelper(`<img src="${shortViewerLink}" alt="${file.name}">`, 'htmlLinkCopied');
     else toast.error(t('galleryErrorCopyingHtmlLink'));
   };
 
-  const handleCopyUbbLink = (file: FileInfo) => {
+  const handleCopyUbbLink = async (file: FileInfo) => {
+    if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing')); return; }
     const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
     const viewerLink = generateViewerLink(alistFilePath);
-    if(viewerLink) copyHelper(`[img]${viewerLink}[/img]`, 'ubbLinkCopied');
+    const shortViewerLink = await alistService.getShortUrl(viewerLink);
+    if(shortViewerLink) await copyHelper(`[img]${shortViewerLink}[/img]`, 'ubbLinkCopied');
     else toast.error(t('galleryErrorCopyingUbbLink'));
   };
 
   const handleCopyThumbnailLink = async (file: FileInfo) => {
     if (!file.thumb) { toast.error(t('galleryThumbnailUrlNotAvailable')); return; }
-    copyHelper(file.thumb, 'thumbnailLinkCopied', 'galleryErrorCopyingThumbnailLink');
+    // Thumbnails are direct URLs, do not attempt to shorten them.
+    await copyHelper(file.thumb, 'thumbnailLinkCopied', 'galleryErrorCopyingThumbnailLink', true);
   };
 
   const handleDelete = async (file: FileInfo) => {
@@ -414,7 +421,6 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       else { toast.error(t('galleryDeleteSelectedFailedCount', { failCount })); result.results.filter(r => !r.success).forEach(r => console.error(`Failed to delete ${r.path}: ${r.error}`));}
     } catch (error: any) { toast.error(`${t('galleryErrorDeletingSelected')} ${error.message}`); }
     finally {
-      // After deletion, reload from page 1
       loadFiles(path, directoryPasswords[path], 1);
       setSelectedFilePaths([]);
     }
@@ -436,29 +442,24 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     if (!alistService || loading || loadingMore || isResolvingPaths) return;
 
     setLoading(true);
-    setLoadingMore(true); // Use loadingMore to indicate a potentially longer load
-    setFiles([]); // Clear current files
-    setSelectedFilePaths([]); // Clear selection
+    setLoadingMore(true); 
+    setFiles([]); 
+    setSelectedFilePaths([]); 
 
     try {
       const passwordToUse = directoryPasswords[path];
-      // Fetch all files by requesting a very large per_page.
-      // Alist API might have a limit, but this is a common pattern.
-      // A more robust solution for extremely large directories would be
-      // to repeatedly call listFiles until total is reached.
-      const response: ListResponse = await alistService.listFiles(path, passwordToUse, 1, 10000); // Request up to 10000 items
+      const response: ListResponse = await alistService.listFiles(path, passwordToUse, 1, 10000); 
       
-      // Filter for only image files and directories
       const allItems = response.content.filter(file => file.is_dir || isImageFile(file));
       setFiles(allItems);
-      setCurrentPage(1); // Reset pagination state
-      setTotalPages(1); // Assume all loaded
+      setCurrentPage(1); 
+      setTotalPages(1); 
       toast.success(t('galleryAllImagesLoaded', { count: allItems.length }));
 
     } catch (error: any) {
       const errorMessage = error.message || t('galleryUnknownError');
       toast.error(`${t('galleryErrorLoadingAllFiles')} ${errorMessage}`);
-      setFiles([]); // Ensure files are cleared on error
+      setFiles([]); 
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -493,10 +494,10 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
         <div className="flex items-center space-x-1 sm:space-x-2 flex-wrap gap-y-2">
           {path !== "/" && (<Button variant="outline" size="sm" onClick={() => { setPasswordPromptPath(path); setCurrentPasswordInput(directoryPasswords[path] || ""); setShowPasswordDialog(true); setPasswordError(null); }}><KeyRound className="h-4 w-4 mr-1" />{t('galleryEnterPassword')}</Button>)}
           <Button variant="outline" size="sm" onClick={() => loadFiles(path, undefined, 1)}>{t('galleryRefresh')}</Button>
-          {currentPage < totalPages && ( // Only show Load All if there are more pages
+          {currentPage < totalPages && ( 
             <Button variant="outline" size="sm" onClick={handleLoadAllImages} disabled={loading || loadingMore || isResolvingPaths}>
               {loadingMore ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
-              {t('galleryLoadAllImages', 'Load All Images')} ({files.length} / {totalPages * itemsPerPage}) {/* Display loaded count / estimated total */}
+              {t('galleryLoadAllImages', 'Load All Images')} ({files.length} / {totalPages * itemsPerPage}) 
             </Button>
           )}
           <Button variant="default" size="sm" onClick={handleOpenMultiShareDialog} disabled={selectedFilePaths.length === 0 || isResolvingPaths} title={t('galleryShareSelectedTooltip')}>
@@ -519,7 +520,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
        displayedFiles.length === 0 && !isResolvingPaths ? ( <div className="text-center p-12 text-gray-500">{t('galleryNoFilesFound')}</div> ) :
       (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
-          {displayedFiles.map((file) => { // Iterate over displayedFiles
+          {displayedFiles.map((file) => { 
             const fullFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
             const isSelected = selectedFilePaths.includes(fullFilePath);
             return (

@@ -1,4 +1,3 @@
-
 import axios from "axios";
 
 export interface FileInfo {
@@ -21,6 +20,24 @@ export interface ListResponse {
 
 // Define and export AuthDetails type
 export type AuthDetails = ({ token: string } | { username?: string; password?: string });
+
+interface YourlsResponse {
+  status?: string; // 'success' or 'fail'
+  code?: string; // Can also be 'success' or an error code like 'error:keyword'
+  shorturl?: string;
+  message?: string; // Error message
+  remark?: string; // Sometimes used for error messages too
+  title?: string;
+  url?: { // This structure might appear for 'success' status with existing short URL
+    keyword: string;
+    url: string; // The original long URL
+    title: string;
+    date: string;
+    ip: string;
+    clicks: string;
+  };
+}
+
 
 export class AlistService {
   private client; // Let TypeScript infer the type from axios.create()
@@ -148,16 +165,7 @@ export class AlistService {
     try {
       // testConnection is primarily for authenticated instances
       if (this.isPublicClient) {
-        // For a public client, "testing connection" might mean checking if the server is reachable
-        // and if basic public endpoints work. For simplicity, we can assume if it's public,
-        // it doesn't need credential testing. Or, implement a light check.
-        // Here, we'll consider it an error to call testConnection on a public client
-        // as it's meant to verify credentials.
-        // Alternatively, one could try a public /api/fs/list on '/'
         console.warn("testConnection called on a public client instance. This typically tests credentials.");
-        // Let's try a benign public call to ensure server is up, if desired.
-        // For now, we'll proceed as if it's for authenticated clients.
-        // If no token and no username/password, it's an issue for a non-public client.
       }
 
       if (!this.token && typeof this.username === 'string' && typeof this.password === 'string') {
@@ -165,21 +173,16 @@ export class AlistService {
         await this._login();
       }
 
-      if (!this.token && !this.isPublicClient) { // Only throw if not public and no token
+      if (!this.token && !this.isPublicClient) { 
         throw new Error("No token available for testing connection. Please provide a token or username/password.");
       }
-
-      // If public, skip auth header check or use a different test.
-      // For now, the existing test proceeds; if public, Authorization header won't be there.
+      
       console.log('Testing connection with URL:', this.baseUrl);
       console.log('Authorization header (first 5 chars):', this.token ? `${this.token.substring(0, 5)}...` : (this.isPublicClient ? 'Public Client' : 'No token'));
       
       const response = await this.client.post('/api/fs/list', { path: '/' });
       console.log('Connection test response:', response.data);
       
-      // If it's a public client, a 401 on /api/fs/list might be expected if root is not public.
-      // The definition of a "successful" testConnection for a public client might differ.
-      // For now, we keep the existing success criteria (code 200).
       if (response.data && response.data.code === 401 && !this.isPublicClient) {
         console.error('Authentication failed during testConnection:', response.data.message);
         throw new Error(`Authentication failed: ${response.data.message || 'Invalid token or credentials'}`);
@@ -187,8 +190,6 @@ export class AlistService {
       
       return response.data && response.data.code === 200;
     } catch (error: any) {
-      // If it's a public client and the error is 401/403, it might just mean the root isn't public,
-      // not necessarily a "connection failure" in the sense of server down.
       console.error('Connection test failed:', error.message);
       
       if (error.response) {
@@ -197,14 +198,12 @@ export class AlistService {
         if (error.response.status === 401 && !this.isPublicClient) {
           throw new Error(`Authentication failed: ${error.response.data?.message || 'Token or credentials might be invalid'}`);
         }
-        // For public client, a 401/403 might not be a "throwable" error in the same way.
-        // However, for now, we'll let it throw.
         throw new Error(`Server error: ${error.response.data?.message || error.response.statusText || 'Unknown server error'}`);
       } else if (error.request) {
         console.error('No response received for request:', error.request);
         throw new Error('No response from server. Please check your server URL and network connection.');
       }
-      throw error; // Re-throw other errors
+      throw error; 
     }
   }
 
@@ -215,9 +214,6 @@ export class AlistService {
       if (!this.isPublicClient && !this.token && typeof this.username === 'string' && typeof this.password === 'string') {
         await this._login();
       }
-      // If it's not a public client and still no token, then it's an auth issue for protected resources.
-      // However, /api/fs/list might work for public sub-paths even if the root needs auth.
-      // The directory password (if provided) is handled separately in the request body.
 
       const requestBody: { path: string; password?: string; page?: number; per_page?: number; refresh?: boolean } = { path };
       if (password) {
@@ -233,7 +229,6 @@ export class AlistService {
       const response = await this.client.post('/api/fs/list', requestBody);
       
       if (response.data && response.data.code === 200 && response.data.data) {
-        // Ensure the response matches the ListResponse interface
         return {
           content: response.data.data.content || [],
           total: response.data.data.total || 0,
@@ -244,14 +239,12 @@ export class AlistService {
       } else {
         console.log('Response structure (listFiles):', JSON.stringify(response.data));
         if (response.data && response.data.code === 401) {
-          if (this.isPublicClient && !password) { // Public client, no directory password tried, 401 likely means path needs auth or dir password
+          if (this.isPublicClient && !password) { 
              throw new Error(`Access denied for path '${path}': ${response.data.message || 'Path may require login or a directory password.'}`);
           }
-          // For authenticated client or if a directory password was tried and failed with 401
           if (response.data.message && (response.data.message.toLowerCase().includes("password") || response.data.message.toLowerCase().includes("unauthorized"))) {
              throw new Error(`Directory access denied: ${response.data.message}. A password may be required or is incorrect.`);
           }
-          // General auth failure for an authenticated client
           if (!this.isPublicClient) {
             throw new Error(`Authentication failed: ${response.data.message || 'Please check your token/credentials and server URL'}`);
           }
@@ -263,12 +256,10 @@ export class AlistService {
         if (response.data && response.data.code !== 200) {
           throw new Error(`Server error (listFiles): ${response.data.message || 'Unknown error'}`);
         }
-        // Fallback for unexpected structure, though ideally API is consistent
         throw new Error('Server error (listFiles): API response data structure is not as expected.');
       }
     } catch (error: any) {
       console.error('Error listing files:', error.message);
-      // Re-throw the error so the UI layer can catch it and prompt for a password if needed
       throw error;
     }
   }
@@ -276,14 +267,13 @@ export class AlistService {
   // 上传文件
   async uploadFile(path: string, file: File, desiredFileNameOnServer?: string): Promise<any> {
     try {
-      // Upload always requires authentication
       if (this.isPublicClient) {
         throw new Error("Upload is not allowed for public (unauthenticated) client.");
       }
       if (!this.token && typeof this.username === 'string' && typeof this.password === 'string') {
         await this._login();
       }
-      if (!this.token) { // Check token again after potential login
+      if (!this.token) { 
         throw new Error("Not authenticated for uploadFile. Token is missing.");
       }
 
@@ -294,7 +284,6 @@ export class AlistService {
       const response = await this.client.put(`/api/fs/put`, file, {
         headers: {
           'File-Path': encodedFullPath,
-          // Authorization is now handled by client defaults or _login
         }
       });
 
@@ -319,12 +308,9 @@ export class AlistService {
   // 获取文件链接（直接预览或下载）
   async getFileLink(path: string): Promise<string> {
     try {
-      // getFileLink can be used by public clients for public paths
       if (!this.isPublicClient && !this.token && typeof this.username === 'string' && typeof this.password === 'string') {
         await this._login();
       }
-      // If not public and still no token, it's an error for protected resources.
-      // For public client, or if token exists, proceed.
       if (!this.isPublicClient && !this.token) {
         throw new Error("Not authenticated for getFileLink (protected resource). Token is missing.");
       }
@@ -334,20 +320,18 @@ export class AlistService {
       if (response.data && response.data.code === 200 && response.data.data && response.data.data.raw_url) {
         let rawUrl = response.data.data.raw_url;
 
-        // Protocol normalization & SharePoint ?Web=1 for preview
         if (rawUrl.includes("sharepoint.com")) {
           if (rawUrl.startsWith("http:")) {
             rawUrl = rawUrl.replace(/^http:/, "https:");
           }
-          // Add ?Web=1 for SharePoint preview, ensuring no duplicates and handles existing params
           if (rawUrl.includes('?')) {
-            if (!rawUrl.match(/[?&]Web=1(?:&|$)/)) { // Avoid adding if Web=1 already exists
+            if (!rawUrl.match(/[?&]Web=1(?:&|$)/)) { 
               rawUrl += '&Web=1';
             }
           } else {
             rawUrl += '?Web=1';
           }
-        } else if (typeof window !== 'undefined') { // Non-SharePoint protocol normalization based on current window protocol
+        } else if (typeof window !== 'undefined') { 
           if (window.location.protocol === 'https:') {
             if (rawUrl.startsWith("http:")) rawUrl = rawUrl.replace(/^http:/, 'https:');
           } else if (window.location.protocol === 'http:') {
@@ -355,14 +339,11 @@ export class AlistService {
           }
         }
 
-        // R2 Link Transformation (using original logic for full path)
         if (rawUrl.includes(".r2.cloudflarestorage.com")) {
           try {
             const urlObject = new URL(rawUrl);
-            const pathname = urlObject.pathname; // e.g., "/bucket/path/to/file.ext" or "/path/to/file.ext"
+            const pathname = urlObject.pathname; 
             if (pathname && this.r2CustomDomain) {
-              // this.r2CustomDomain should not have a trailing slash (enforced in constructor)
-              // pathname usually starts with a slash.
               const relativePath = pathname.startsWith('/') ? pathname.substring(1) : pathname;
               const newR2Url = `${this.r2CustomDomain}/${relativePath}`;
               console.log(`R2 URL transformed: ${rawUrl} -> ${newR2Url}`);
@@ -372,14 +353,11 @@ export class AlistService {
             }
           } catch (e) {
             console.error("Error parsing R2 URL for transformation:", e);
-            // Fall through to return original rawUrl if R2 transformation fails
           }
         }
-        // End of R2 Link Transformation
         
-        return rawUrl; // Return the (potentially modified) rawUrl
+        return rawUrl; 
       } else {
-        // Handle API errors or unexpected response structure
         console.log('Response structure for file link (getFileLink):', JSON.stringify(response.data));
         if (response.data && response.data.code === 401) {
           if (this.isPublicClient) {
@@ -395,26 +373,25 @@ export class AlistService {
       }
     } catch (error: any) {
       console.error('Error getting file link:', error.message);
-      throw error; // Re-throw to be handled by the caller
+      throw error; 
     }
   }
 
   // 创建文件夹
   async createFolder(path: string, name: string): Promise<any> {
     try {
-      // mkdir always requires authentication
       if (this.isPublicClient) {
         throw new Error("Folder creation is not allowed for public (unauthenticated) client.");
       }
       if (!this.token && typeof this.username === 'string' && typeof this.password === 'string') {
         await this._login();
       }
-      if (!this.token) { // Check token again after potential login
+      if (!this.token) { 
         throw new Error("Not authenticated for createFolder. Token is missing.");
       }
 
       const response = await this.client.post('/api/fs/mkdir', {
-        path: `${path}${path.endsWith('/') ? '' : '/'}${name}` // Ensure correct path joining
+        path: `${path}${path.endsWith('/') ? '' : '/'}${name}` 
       });
       
       if (response.data && response.data.code === 401) {
@@ -433,14 +410,13 @@ export class AlistService {
   // 删除文件或文件夹
   async deleteFile(path: string): Promise<any> {
     try {
-      // Deletion always requires authentication
       if (this.isPublicClient) {
         throw new Error("Deletion is not allowed for public (unauthenticated) client.");
       }
       if (!this.token && typeof this.username === 'string' && typeof this.password === 'string') {
         await this._login();
       }
-      if (!this.token) { // Check token again after potential login
+      if (!this.token) { 
         throw new Error("Not authenticated for deleteFile. Token is missing.");
       }
 
@@ -491,15 +467,13 @@ export class AlistService {
       return { success: true, results: [] }; // Nothing to delete
     }
 
-    // Group files by directory
     const groupedByDirectory: Record<string, string[]> = {};
     for (const fullPath of fullPaths) {
       const lastSlashIndex = fullPath.lastIndexOf('/');
-      // Handle cases where path might be just a filename in root, or has no leading slash
       const dir = lastSlashIndex === -1 ? '/' : (fullPath.substring(0, lastSlashIndex) || '/');
       const name = lastSlashIndex === -1 ? fullPath : fullPath.substring(lastSlashIndex + 1);
       
-      if (!name) continue; // Skip if name is somehow empty (e.g. path ends with '/')
+      if (!name) continue; 
 
       if (!groupedByDirectory[dir]) {
         groupedByDirectory[dir] = [];
@@ -537,5 +511,57 @@ export class AlistService {
       }
     }
     return { success: allSucceeded, results: overallResults };
+  }
+
+  // 获取短链接 (YOURLS)
+  async getShortUrl(longUrl: string): Promise<string> {
+    const yourlsApiUrl = localStorage.getItem("yourls_url");
+    const yourlsSignature = localStorage.getItem("yourls_token");
+
+    if (yourlsApiUrl && yourlsSignature) {
+      const apiUrl = `${yourlsApiUrl.replace(/\/$/, '')}/yourls-api.php`;
+      try {
+        const params = new URLSearchParams();
+        params.append('signature', yourlsSignature);
+        params.append('action', 'shorturl');
+        params.append('url', longUrl);
+        params.append('format', 'json');
+
+        console.log(`[AlistService] Requesting short URL via POST to: ${apiUrl}`);
+        console.log(`[AlistService] POST params: signature=${yourlsSignature}, action=shorturl, url=${longUrl.substring(0,100)}..., format=json`);
+        
+        const response = await axios.post<YourlsResponse>(apiUrl, params, {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        });
+        
+        console.log('[AlistService] YOURLS API POST Response Status:', response.status);
+        console.log('[AlistService] YOURLS API POST Response Data:', response.data);
+
+        if (response.data && (response.data.status === 'success' || String(response.data.code).startsWith('success')) && response.data.shorturl) {
+          console.log(`[AlistService] Short URL received: ${response.data.shorturl}`);
+          return response.data.shorturl;
+        } else {
+          console.warn('[AlistService] YOURLS API (POST) did not return a success status or shorturl. Data:', response.data);
+          const errorMessage = response.data?.message || response.data?.remark || 'YOURLS API error (POST)';
+          return longUrl; 
+        }
+      } catch (error: any) {
+        console.error('[AlistService] Error calling YOURLS API (POST):', error.message);
+        // Check if error is an Axios-like error and has a response object
+        if (error && typeof error === 'object' && 'isAxiosError' in error && (error as any).isAxiosError === true && (error as any).response) {
+          console.error('[AlistService] YOURLS API (POST) AxiosError Response Data:', (error as any).response.data);
+          console.error('[AlistService] YOURLS API (POST) AxiosError Response Status:', (error as any).response.status);
+        } else if (error && typeof error === 'object' && 'response' in error && (error as any).response) { 
+            console.error('[AlistService] YOURLS API (POST) HTTP Error Data:', (error as any).response.data);
+            console.error('[AlistService] YOURLS API (POST) HTTP Error Status:', (error as any).response.status);
+        } else {
+            console.error('[AlistService] YOURLS API (POST) Non-HTTP Error:', error);
+        }
+        return longUrl; 
+      }
+    }
+    return longUrl; 
   }
 }
