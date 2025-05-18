@@ -175,7 +175,15 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       if (!encryptedConfig) { toast.error(t('galleryErrorEncryptionFailed')); return; }
       const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${fileToShare.name}`;
       const viewerLink = `${window.location.origin}/view?path=${encodeURIComponent(alistFilePath)}&c=${encodeURIComponent(encryptedConfig)}`;
-      navigator.clipboard.writeText(viewerLink); toast.success(t('galleryEncryptedLinkCopied')); toast.info(t('gallerySharePasswordReminder'));
+      navigator.clipboard.writeText(viewerLink)
+        .then(() => {
+          toast.success(t('galleryEncryptedLinkCopied'));
+          toast.info(t('gallerySharePasswordReminder'));
+        })
+        .catch(err => {
+          console.error('Failed to copy encrypted link: ', err);
+          toast.error(t('galleryErrorCopyingLinkGeneric', 'Failed to copy link. You may need to do it manually.'));
+        });
       setShowEncryptShareDialog(false); setFileToShare(null);
     } catch (e:any) { console.error("Err creating encrypted link:", e); toast.error(`${t('galleryErrorCreatingEncryptedLink')} ${e.message}`); }
   };
@@ -228,32 +236,63 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       const encryptedConfig = placeholderEncrypt(JSON.stringify(configToEncrypt), multiShareEncryptionPassword);
       if (!encryptedConfig) { toast.error(t('galleryErrorEncryptionFailed')); return; }
       const viewerLink = `${window.location.origin}/view?type=gallery&c=${encodeURIComponent(encryptedConfig)}`;
-      navigator.clipboard.writeText(viewerLink); toast.success(t('galleryMultiEncryptedLinkCopied')); toast.info(t('gallerySharePasswordReminder'));
+      navigator.clipboard.writeText(viewerLink)
+        .then(() => {
+          toast.success(t('galleryMultiEncryptedLinkCopied'));
+          toast.info(t('gallerySharePasswordReminder'));
+        })
+        .catch(err => {
+          console.error('Failed to copy multi-share encrypted link: ', err);
+          toast.error(t('galleryErrorCopyingLinkGeneric', 'Failed to copy link. You may need to do it manually.'));
+        });
       setShowMultiShareEncryptDialog(false); setSelectedFilePaths([]); setImagePathsForGalleryShare([]);
     } catch (e:any) { console.error("Err creating multi-share link:", e); toast.error(`${t('galleryErrorCreatingEncryptedLink')} ${e.message}`);}
   };
 
   const generateViewerLink = (filePath: string) => `${window.location.origin}/view?path=${encodeURIComponent(filePath)}`;
-  const copyHelper = async (file: FileInfo, type: 'link' | 'md' | 'html' | 'ubb') => {
+  
+  const copyHelper = (contentToCopy: string, successMsgKey: string, errorMsgKey: string = 'galleryErrorCopyingLinkGeneric') => {
+    navigator.clipboard.writeText(contentToCopy)
+      .then(() => {
+        toast.success(t(successMsgKey));
+      })
+      .catch(err => {
+        console.error(`Failed to copy (${successMsgKey}): `, err);
+        toast.error(t(errorMsgKey, 'Failed to copy link. You may need to do it manually.'));
+      });
+  };
+
+  const handleCopyLink = (file: FileInfo) => {
     const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
     const viewerLink = generateViewerLink(alistFilePath);
-    if (!viewerLink) { toast.error(t('galleryErrorCopyingLink')); return; }
-    let contentToCopy = viewerLink; let successMsgKey = 'imageLinkCopied';
-    if (type === 'md') { contentToCopy = `![${file.name}](${viewerLink})`; successMsgKey = 'markdownLinkCopied'; }
-    else if (type === 'html') { contentToCopy = `<img src="${viewerLink}" alt="${file.name}">`; successMsgKey = 'htmlLinkCopied'; }
-    else if (type === 'ubb') { contentToCopy = `[img]${viewerLink}[/img]`; successMsgKey = 'ubbLinkCopied'; }
-    try { await navigator.clipboard.writeText(contentToCopy); toast.success(t(successMsgKey)); }
-    catch (e:any) { toast.error(t(`galleryErrorCopying${type.charAt(0).toUpperCase() + type.slice(1)}Link`));}
+    if (viewerLink) copyHelper(viewerLink, 'imageLinkCopied');
+    else toast.error(t('galleryErrorCopyingLink'));
   };
-  const handleCopyLink = (file: FileInfo) => copyHelper(file, 'link');
-  const handleCopyMarkdownLink = (file: FileInfo) => copyHelper(file, 'md');
-  const handleCopyHtmlLink = (file: FileInfo) => copyHelper(file, 'html');
-  const handleCopyUbbLink = (file: FileInfo) => copyHelper(file, 'ubb');
+
+  const handleCopyMarkdownLink = (file: FileInfo) => {
+    const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
+    const viewerLink = generateViewerLink(alistFilePath);
+    if(viewerLink) copyHelper(`![${file.name}](${viewerLink})`, 'markdownLinkCopied');
+    else toast.error(t('galleryErrorCopyingMarkdownLink'));
+  };
+
+  const handleCopyHtmlLink = (file: FileInfo) => {
+    const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
+    const viewerLink = generateViewerLink(alistFilePath);
+    if(viewerLink) copyHelper(`<img src="${viewerLink}" alt="${file.name}">`, 'htmlLinkCopied');
+    else toast.error(t('galleryErrorCopyingHtmlLink'));
+  };
+
+  const handleCopyUbbLink = (file: FileInfo) => {
+    const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
+    const viewerLink = generateViewerLink(alistFilePath);
+    if(viewerLink) copyHelper(`[img]${viewerLink}[/img]`, 'ubbLinkCopied');
+    else toast.error(t('galleryErrorCopyingUbbLink'));
+  };
 
   const handleCopyThumbnailLink = async (file: FileInfo) => {
     if (!file.thumb) { toast.error(t('galleryThumbnailUrlNotAvailable')); return; }
-    try { await navigator.clipboard.writeText(file.thumb); toast.success(t('thumbnailLinkCopied')); }
-    catch (error: any) { toast.error(`${t('galleryErrorCopyingThumbnailLink')} ${error.message || t('galleryUnknownError')}`); }
+    copyHelper(file.thumb, 'thumbnailLinkCopied', 'galleryErrorCopyingThumbnailLink');
   };
 
   const handleDelete = async (file: FileInfo) => {
