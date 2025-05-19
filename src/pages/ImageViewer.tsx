@@ -320,61 +320,86 @@ const ImageViewer: React.FC = () => {
   const objectUrlsToRevokeRef = useRef<string[]>([]);
 
   const fetchAndSetImage = useCallback(async (filePath: string, index?: number) => {
+    console.log(`[ImageViewer] Attempting to fetch image for path: "${filePath}" at index: ${index}`);
     if (index !== undefined) {
       setGalleryItems(prev => prev.map((item, i) => i === index ? { ...item, isLoading: true, error: undefined } : item));
-    } else {
-      setIsLoading(true); // For single image mode
-      setError(null);
-    }
-
-    try {
-      if (!alistService) throw new Error(t('imageViewer.noAlistServiceErrorShort', 'Alist service not ready.'));
-      
-      const originalFileUrl = await alistService.getFileLink(filePath);
-      if (!originalFileUrl) throw new Error(t('imageViewer.failedToGetDirectUrlError', 'Failed to get direct URL.'));
-
-      const response = await fetch(originalFileUrl);
-      if (!response.ok) throw new Error(`${t('imageViewer.fetchFailedError', 'Fetch failed:')} ${response.status} ${response.statusText}`);
-      
-      const blob = await response.blob();
-      let typedBlob = blob;
-      const determinedMimeType = getMimeTypeByFilename(filePath);
-
-      if (determinedMimeType && (!blob.type || !blob.type.startsWith('image/'))) {
-        try {
-          typedBlob = new Blob([blob], { type: determinedMimeType });
-          console.log(`[ImageViewer] Corrected blob type for ${filePath} from ${blob.type || 'unknown'} to ${determinedMimeType}`);
-        } catch (blobError) {
-          console.error(`[ImageViewer] Error creating typed blob for ${filePath} with type ${determinedMimeType}:`, blobError);
-          // typedBlob remains the original blob in case of error
+      }
+      // Single mode isLoading and setError are handled by the calling useEffect
+  
+      try {
+        if (!alistService) throw new Error(t('imageViewer.noAlistServiceErrorShort', 'Alist service not ready.'));
+        
+        const originalFileUrl = await alistService.getFileLink(filePath);
+        console.log(`[ImageViewer] Received originalFileUrl for "${filePath}": "${originalFileUrl}"`);
+        if (!originalFileUrl) {
+            console.error(`[ImageViewer] getFileLink returned null or empty for "${filePath}"`);
+            throw new Error(t('imageViewer.failedToGetDirectUrlError', 'Failed to get direct URL.'));
         }
-      } else if (!blob.type || !blob.type.startsWith('image/')) {
-          console.warn(`[ImageViewer] Fetched content for ${filePath} (type: ${blob.type || 'unknown'}) is not an image and specific type not determined from extension. Displaying as is.`);
+  
+        const response = await fetch(originalFileUrl);
+        console.log(`[ImageViewer] Fetch response status for "${originalFileUrl}": ${response.status}`);
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Could not read error text');
+          console.error(`[ImageViewer] Fetch failed for "${originalFileUrl}". Status: ${response.status}. Body: ${errorText}`);
+          throw new Error(`${t('imageViewer.fetchFailedError', 'Fetch failed:')} ${response.status} ${response.statusText}`);
+        }
+        
+        const blob = await response.blob();
+        let typedBlob = blob;
+        const determinedMimeType = getMimeTypeByFilename(filePath);
+        console.log(`[ImageViewer] For "${filePath}", Blob type: ${blob.type}, Size: ${blob.size}, Determined MIME: ${determinedMimeType}`);
+  
+        if (determinedMimeType && (!blob.type || !blob.type.startsWith('image/'))) {
+          try {
+            typedBlob = new Blob([blob], { type: determinedMimeType });
+            console.log(`[ImageViewer] Corrected blob type for ${filePath} from ${blob.type || 'unknown'} to ${determinedMimeType}`);
+          } catch (blobError) {
+            console.error(`[ImageViewer] Error creating typed blob for ${filePath} with type ${determinedMimeType}:`, blobError);
+            // typedBlob remains the original blob in case of error
+          }
+        } else if (!blob.type || !blob.type.startsWith('image/')) {
+            console.warn(`[ImageViewer] Fetched content for ${filePath} (type: ${blob.type || 'unknown'}) is not an image and specific type not determined from extension. Displaying as is.`);
+        }
+        
+        const objectUrl = URL.createObjectURL(typedBlob);
+        objectUrlsToRevokeRef.current.push(objectUrl);
+  
+        if (index !== undefined) {
+          setGalleryItems(prev => prev.map((item, i) => i === index ? { path: filePath, src: objectUrl, isLoading: false, originalUrl: originalFileUrl } : item));
+        } else {
+          setSingleImageUrl(objectUrl);
+          setError(null); // Clear error on successful load for single image
+        }
+      } catch (err: any) {
+        console.error(`[ImageViewer] CATCH in fetchAndSetImage for path "${filePath}":`, err.message, err.stack);
+        if (index !== undefined) {
+          setGalleryItems(prev => prev.map((item, i) => i === index ? { ...item, isLoading: false, error: err.message, src: null, originalUrl: item.originalUrl } : item));
+        } else {
+          setError(`${t('imageViewer.loadImageError', 'Error loading image:')} ${err.message}`);
+          setSingleImageUrl(null);
+        }
+      } finally {
+        // For single image mode, setIsLoading is handled by the calling useEffect's finally block.
+        // For gallery items, item.isLoading is managed internally by setGalleryItems.
       }
-      
-      const objectUrl = URL.createObjectURL(typedBlob);
-      objectUrlsToRevokeRef.current.push(objectUrl);
-
-      if (index !== undefined) {
-        setGalleryItems(prev => prev.map((item, i) => i === index ? { path: filePath, src: objectUrl, isLoading: false, originalUrl: originalFileUrl } : item));
-      } else {
-        setSingleImageUrl(objectUrl);
+    }, [alistService, t, setGalleryItems, setSingleImageUrl, setError]); // Removed setIsLoading from dependencies
+  
+    useEffect(() => {
+    // Determine the path for single image mode more robustly
+    let determinedSinglePath: string | null = null;
+    if (mode === 'single') {
+      if (singleImagePathFromParam) {
+        determinedSinglePath = singleImagePathFromParam;
+      } else if (tempAlistConfig?.imagePaths && tempAlistConfig.imagePaths.length > 0) {
+        // If 'path' param is missing, but encrypted config has imagePaths,
+        // and it's single mode, use the first path.
+        if (tempAlistConfig.imagePaths.length > 1) {
+            console.warn(`[ImageViewer] Single mode with encrypted config and no 'path' param, but 'imagePaths' in config has ${tempAlistConfig.imagePaths.length} entries. Using the first one: ${tempAlistConfig.imagePaths[0]}`);
+        }
+        determinedSinglePath = tempAlistConfig.imagePaths[0];
       }
-    } catch (err: any) {
-      console.error(`[ImageViewer] Error fetching image for path ${filePath}:`, err);
-      if (index !== undefined) {
-        setGalleryItems(prev => prev.map((item, i) => i === index ? { ...item, isLoading: false, error: err.message, src: null, originalUrl: item.originalUrl } : item));
-      } else {
-        setError(`${t('imageViewer.loadImageError', 'Error loading image:')} ${err.message}`);
-        setSingleImageUrl(null);
-      }
-    } finally {
-      if (index === undefined) setIsLoading(false); // For single image mode
     }
-  }, [alistService, t, setGalleryItems, setIsLoading, setError, setSingleImageUrl]);
-
-  useEffect(() => {
-    const currentImagePathForEffect = mode === 'single' ? singleImagePathFromParam : null;
+    // const currentImagePathForEffect = mode === 'single' ? singleImagePathFromParam : null; // Replaced by determinedSinglePath logic
     const currentImagePathsForEffect = mode === 'gallery' ? (decryptedImagePaths || (searchParams.get('paths') ? JSON.parse(searchParams.get('paths') || '[]') : [])) : null;
 
     // Wait for initial password check/auto-decrypt attempt before proceeding if encrypted
@@ -411,17 +436,32 @@ const ImageViewer: React.FC = () => {
         }
 
         if (pathsToLoad && pathsToLoad.length > 0) {
+          console.log("[ImageViewer] pathsToLoad for gallery:", JSON.stringify(pathsToLoad));
           // Initialize galleryItems with all paths, but src and isLoading set to false initially
           setGalleryItems(pathsToLoad.map(p => ({ path: p, src: null, isLoading: false, error: undefined, originalUrl: undefined })));
           // setIsLoading(true) will be handled by the new useEffect for page-specific loading
           // The actual fetching will be triggered by the new useEffect hook based on currentPage and itemsPerPage
-        } else if (!encryptedConfigParam || (triedDecryption && tempAlistConfig && !tempAlistConfig.imagePaths)) {
+        } else if (!encryptedConfigParam || (triedDecryption && tempAlistConfig && (!tempAlistConfig.imagePaths || tempAlistConfig.imagePaths.length === 0))) {
           setError(t('imageViewer.galleryNoImages', 'No images specified for gallery view.'));
           setIsLoading(false);
         }
-      } else if (mode === 'single' && currentImagePathForEffect) {
-        fetchAndSetImage(currentImagePathForEffect);
-      } else if (mode === 'single' && !currentImagePathForEffect) {
+      } else if (mode === 'single' && determinedSinglePath) { // Use determinedSinglePath
+        const loadSingleImage = async () => {
+          setIsLoading(true);
+          setError(null);
+          try {
+            await fetchAndSetImage(determinedSinglePath); // Use determinedSinglePath
+          } catch (e) {
+            // This catch is mostly for unexpected errors from fetchAndSetImage itself,
+            // though fetchAndSetImage should handle its own state updates for error/singleImageUrl.
+            console.error("[ImageViewer] Error during loadSingleImage wrapper:", e);
+            // setError would have been set by fetchAndSetImage
+          } finally {
+            setIsLoading(false);
+          }
+        };
+        loadSingleImage();
+      } else if (mode === 'single' && !determinedSinglePath) { // Use determinedSinglePath
          setError(t('imageViewer.noPathError', 'Image path not provided.'));
          setIsLoading(false);
       }
@@ -553,9 +593,6 @@ const ImageViewer: React.FC = () => {
             onClick={() => openZoomModal(singleImageUrl, singleImagePathFromParam || 'Image')}
           />
         </div>
-      )}
-      {mode === 'single' && !singleImageUrl && !isLoading && !error && (
-         <div className="w-full text-center"><p>{t('imageViewer.noImagePreview', 'No image to preview, path may be invalid, or access denied.')}</p></div>
       )}
 
       {mode === 'gallery' && galleryItems.length > 0 && (

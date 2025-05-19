@@ -215,7 +215,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       setShareEncryptionPassword(defaultPassword);
       // Use a microtask to ensure state is set before calling
       Promise.resolve().then(() => {
-        handleCreateEncryptedShareLink();
+        handleCreateEncryptedShareLink(file, defaultPassword); // Pass file and password directly
       });
     } else {
       setShareEncryptionPassword("");
@@ -223,9 +223,21 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     }
   };
 
-  const handleCreateEncryptedShareLink = async () => {
+  // Modified to accept file and password as parameters
+  const handleCreateEncryptedShareLink = async (fileForShare: FileInfo | null, passwordToUse?: string) => {
     if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing', 'Alist service is not available.')); return; }
-    if (!fileToShare || !shareEncryptionPassword) { toast.error(t('galleryErrorPasswordForEncryption')); return; }
+    
+    const currentFileToProcess = fileForShare || fileToShare; // Prioritize passed file
+    const finalPassword = passwordToUse || shareEncryptionPassword;
+
+    if (!currentFileToProcess || !finalPassword) {
+      toast.error(t('galleryErrorPasswordForEncryption'));
+      // If it was an auto-call (fileForShare and passwordToUse were provided) and failed here, log it.
+      if (fileForShare && passwordToUse) { // Check if it was an auto-call attempt
+        console.warn("Auto-create single file share link failed due to missing file or password just before encryption. File was:", fileForShare ? fileForShare.name : 'null', "Password was:", passwordToUse ? '***' : 'undefined');
+      }
+      return;
+    }
     const serverUrl = alistService.getBaseUrl();
     const token = alistService.getCurrentToken();
     const r2CustomDomain = alistService.getR2CustomDomain();
@@ -233,19 +245,20 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     let authDetailsToEncrypt: AuthDetails | null = token ? { token } : (alistService.getIsPublicClient() ? null : null);
     const configToEncrypt: AlistConfigToShare = { serverUrl, authDetails: authDetailsToEncrypt, r2CustomDomain };
     try {
-      const encryptedConfig = placeholderEncrypt(JSON.stringify(configToEncrypt), shareEncryptionPassword);
+      const encryptedConfig = placeholderEncrypt(JSON.stringify(configToEncrypt), finalPassword); // Use finalPassword
       if (!encryptedConfig) { toast.error(t('galleryErrorEncryptionFailed')); return; }
-      const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${fileToShare.name}`;
+      const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${currentFileToProcess.name}`; // Use currentFileToProcess
       let viewerLink = `${window.location.origin}/view?path=${encodeURIComponent(alistFilePath)}&c=${encodeURIComponent(encryptedConfig)}`;
       
-      const enablePasswordless = localStorage.getItem("alist_enable_passwordless_share") === "true";
-      const defaultPassword = localStorage.getItem("alist_default_share_password");
+      const enablePasswordlessGlobal = localStorage.getItem("alist_enable_passwordless_share") === "true";
+      const defaultPasswordFromStorage = localStorage.getItem("alist_default_share_password");
 
-      if (enablePasswordless && defaultPassword && shareEncryptionPassword === defaultPassword) {
+      // Check if passwordless mode is active AND the password used for encryption IS the default one
+      if (enablePasswordlessGlobal && defaultPasswordFromStorage && finalPassword === defaultPasswordFromStorage) {
         try {
-          const encodedPassword = btoa(shareEncryptionPassword);
+          const encodedPassword = btoa(finalPassword); // Use finalPassword
           viewerLink += `&pm=1&pk=${encodeURIComponent(encodedPassword)}`;
-          toast.info("Passwordless share link generated for single file.");
+          // toast.info("Passwordless share link generated for single file."); // Avoid double toast if auto-called
         } catch (e) {
           console.error("Error base64 encoding password for single file passwordless link:", e);
         }
@@ -273,32 +286,57 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     if (!alistService) return [];
     setIsResolvingPaths(true);
     toast.info(t('galleryResolvingFolderPaths', 'Resolving folder contents for gallery...'));
+    console.log('[Gallery] resolvePathsForGalleryShare - Input selectedPaths:', JSON.stringify(selectedPaths));
     const resolvedImagePaths: string[] = [];
     for (const selectedPath of selectedPaths) {
       const fileEntry = files.find(f => `${path}${path.endsWith('/') ? '' : '/'}${f.name}` === selectedPath);
+      console.log(`[Gallery] resolvePathsForGalleryShare - Processing selectedPath: "${selectedPath}", found fileEntry:`, fileEntry ? {name: fileEntry.name, is_dir: fileEntry.is_dir} : null);
       if (fileEntry) {
         if (fileEntry.is_dir) {
           try {
-            const dirResponse = await alistService.listFiles(selectedPath, directoryPasswords[selectedPath]); 
+            const passwordForDir = directoryPasswords[selectedPath];
+            console.log(`[Gallery] resolvePathsForGalleryShare - Listing folder: "${selectedPath}" with password: ${passwordForDir ? '***' : 'none'}`);
+            const dirResponse = await alistService.listFiles(selectedPath, passwordForDir);
+            console.log(`[Gallery] resolvePathsForGalleryShare - Content of folder "${selectedPath}":`, dirResponse.content.map(f => ({name: f.name, is_dir: f.is_dir, type: f.type, thumb: !!f.thumb})));
             dirResponse.content.filter(isImageFile).forEach(imgFile => {
-              resolvedImagePaths.push(`${selectedPath}${selectedPath.endsWith('/') ? '' : '/'}${imgFile.name}`);
+              const fullImgPath = `${selectedPath}${selectedPath.endsWith('/') ? '' : '/'}${imgFile.name}`;
+              resolvedImagePaths.push(fullImgPath);
+              console.log(`[Gallery] resolvePathsForGalleryShare - Added image from folder: "${fullImgPath}"`);
             });
           } catch (e) { console.error(`Error listing contents of folder ${selectedPath}:`, e); toast.error(t('galleryErrorListingFolderContents', { folderName: fileEntry.name })); }
         } else if (isImageFile(fileEntry)) {
           resolvedImagePaths.push(selectedPath);
+          console.log(`[Gallery] resolvePathsForGalleryShare - Added direct image file: "${selectedPath}"`);
         }
+      } else {
+        console.warn(`[Gallery] resolvePathsForGalleryShare - Could not find fileEntry for selectedPath: "${selectedPath}" in current files list.`);
       }
     }
     setIsResolvingPaths(false);
     if (resolvedImagePaths.length === 0 && selectedPaths.length > 0) { toast.warning(t('galleryNoImagesFoundInSelection')); }
+    console.log('[Gallery] resolvePathsForGalleryShare - Output resolvedImagePaths:', JSON.stringify(resolvedImagePaths));
     return [...new Set(resolvedImagePaths)];
   };
 
   const handleOpenMultiShareDialog = async () => {
-    if (selectedFilePaths.length === 0) { toast.info(t('galleryNoFilesSelectedForMultiShare')); return; }
+    console.log('[Gallery] handleOpenMultiShareDialog - Entry. Current selectedFilePaths:', JSON.stringify(selectedFilePaths));
+    if (selectedFilePaths.length === 0) {
+      toast.info(t('galleryNoFilesSelectedForMultiShare'));
+      console.log('[Gallery] handleOpenMultiShareDialog - Exiting: No files selected.');
+      return;
+    }
+    console.log('[Gallery] handleOpenMultiShareDialog - About to call resolvePathsForGalleryShare with:', JSON.stringify(selectedFilePaths));
     const resolvedPaths = await resolvePathsForGalleryShare(selectedFilePaths);
-    if (resolvedPaths.length === 0 && selectedFilePaths.length > 0) { return; } // No images found after resolving folders
-    if (resolvedPaths.length === 0) { toast.info(t('galleryNoImagesToShareAfterResolution', 'No images to share after resolving selection.')); return;}
+    console.log('[Gallery] handleOpenMultiShareDialog - resolvedPaths received:', JSON.stringify(resolvedPaths));
+    if (resolvedPaths.length === 0 && selectedFilePaths.length > 0) {
+      console.log('[Gallery] handleOpenMultiShareDialog - Exiting: Resolved paths is empty, but original selection was not.');
+      return;
+    } // No images found after resolving folders
+    if (resolvedPaths.length === 0) {
+      toast.info(t('galleryNoImagesToShareAfterResolution', 'No images to share after resolving selection.'));
+      console.log('[Gallery] handleOpenMultiShareDialog - Exiting: Resolved paths is empty.');
+      return;
+    }
     
     // Set state for dialog use if needed, but pass directly for auto-creation
     setImagePathsForGalleryShare(resolvedPaths);
@@ -345,9 +383,9 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       serverUrl,
       authDetails: authDetailsToEncrypt,
       r2CustomDomain,
-      imagePaths: imagePathsForGalleryShare,
-      v: 2, 
-      comp: 'pako_b64' 
+      imagePaths: finalPaths, // Use the correctly resolved paths passed as argument
+      v: 2,
+      comp: 'pako_b64'
     };
     try {
       const jsonString = JSON.stringify(configToEncrypt);
@@ -666,8 +704,8 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
               <br/><strong className="text-xs">{t('galleryEncryptShareWarning')}</strong>
             </DialogDescription>
           </DialogHeader>
-          <div className="flex items-center space-x-2 py-4"><div className="grid flex-1 gap-2"><Label htmlFor="share-password" className="sr-only">{t('gallerySharePasswordLabel')}</Label><Input id="share-password" type="password" placeholder={t('gallerySharePasswordPlaceholder')} value={shareEncryptionPassword} onChange={(e) => setShareEncryptionPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleCreateEncryptedShareLink()}/></div></div>
-          <DialogFooter className="sm:justify-start"><Button type="button" onClick={handleCreateEncryptedShareLink} disabled={!shareEncryptionPassword}><Lock className="mr-2 h-4 w-4" /> {t('galleryCreateLinkButton')}</Button><Button type="button" variant="ghost" onClick={() => setShowEncryptShareDialog(false)}>{t('galleryCancelButton')}</Button></DialogFooter>
+          <div className="flex items-center space-x-2 py-4"><div className="grid flex-1 gap-2"><Label htmlFor="share-password" className="sr-only">{t('gallerySharePasswordLabel')}</Label><Input id="share-password" type="password" placeholder={t('gallerySharePasswordPlaceholder')} value={shareEncryptionPassword} onChange={(e) => setShareEncryptionPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleCreateEncryptedShareLink(fileToShare, shareEncryptionPassword)}/></div></div>
+          <DialogFooter className="sm:justify-start"><Button type="button" onClick={() => handleCreateEncryptedShareLink(fileToShare, shareEncryptionPassword)} disabled={!shareEncryptionPassword || !fileToShare}><Lock className="mr-2 h-4 w-4" /> {t('galleryCreateLinkButton')}</Button><Button type="button" variant="ghost" onClick={() => setShowEncryptShareDialog(false)}>{t('galleryCancelButton')}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
