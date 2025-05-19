@@ -117,5 +117,10 @@
   "zoomInButton": "Zoom In",
   "tokenInputGuestConnectButton": "Guest Upload",
   "switchToLightMode": "Switch to Light Mode",
-  "switchToDarkMode": "Switch to Dark Mode"
+  "switchToDarkMode": "Switch to Dark Mode",
+  "tokenInputDefaultSharePasswordLabel": "Auth Info Encryption (for Passwordless Share)",
+  "tokenInputDefaultSharePasswordPlaceholder": "Enter a strong password",
+  "tokenInputDefaultSharePasswordHint": "This password will be used if 'Enable Passwordless Share' is on. It encrypts share info.",
+  "tokenInputEnablePasswordlessShareLabel": "Enable Passwordless Share",
+  "tokenInputEnablePasswordlessShareHint": "If enabled, shared links won't require users to enter a password. The Default Share Password will be used internally."
 }

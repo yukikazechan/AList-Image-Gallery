@@ -17,6 +17,8 @@ const Index = () => {
   const [r2CustomDomain, setR2CustomDomain] = useState<string>(localStorage.getItem("alist_r2_custom_domain") || "");
   const [yourlsUrl, setYourlsUrl] = useState<string>(localStorage.getItem("yourls_url") || "");
   const [yourlsToken, setYourlsToken] = useState<string>(localStorage.getItem("yourls_token") || "");
+  const [defaultSharePassword, setDefaultSharePassword] = useState<string>(localStorage.getItem("alist_default_share_password") || "");
+  const [enablePasswordlessShare, setEnablePasswordlessShare] = useState<boolean>(localStorage.getItem("alist_enable_passwordless_share") === "true");
   const [path, setPath] = useState<string>("/");
   const [activeTab, setActiveTab] = useState<string>("upload");
   const [connectionVerified, setConnectionVerified] = useState<boolean>(false);
@@ -95,6 +97,14 @@ const Index = () => {
       } else {
         localStorage.removeItem("yourls_token");
       }
+      // Save new share password settings
+      if (defaultSharePassword) {
+        localStorage.setItem("alist_default_share_password", defaultSharePassword);
+      } else {
+        localStorage.removeItem("alist_default_share_password");
+      }
+      localStorage.setItem("alist_enable_passwordless_share", String(enablePasswordlessShare));
+
     } else {
       localStorage.removeItem("alist_token");
       localStorage.removeItem("alist_username");
@@ -103,6 +113,8 @@ const Index = () => {
       localStorage.removeItem("alist_r2_custom_domain");
       localStorage.removeItem("yourls_url");
       localStorage.removeItem("yourls_token");
+      localStorage.removeItem("alist_default_share_password");
+      localStorage.removeItem("alist_enable_passwordless_share");
     }
 
     // Test connection whenever alistService instance changes
@@ -124,19 +136,23 @@ const Index = () => {
     } else {
       setConnectionVerified(false);
     }
-  }, [alistService, token, username, password, serverUrl, authMethod, r2CustomDomain, yourlsUrl, yourlsToken, t]);
+  }, [alistService, token, username, password, serverUrl, authMethod, r2CustomDomain, yourlsUrl, yourlsToken, defaultSharePassword, enablePasswordlessShare, t]);
 
   const handleConnectionSubmit = (
     authDetails: { token: string } | { username?: string; password?: string },
     newServerUrl: string,
     newR2CustomDomain?: string,
     newYourlsUrl?: string,
-    newYourlsToken?: string
+    newYourlsToken?: string,
+    newDefaultSharePassword?: string, // New parameter
+    newEnablePasswordlessShare?: boolean // New parameter
   ) => {
     setServerUrl(newServerUrl);
     setR2CustomDomain(newR2CustomDomain || "");
     setYourlsUrl(newYourlsUrl || "");
     setYourlsToken(newYourlsToken || "");
+    setDefaultSharePassword(newDefaultSharePassword || ""); // Set new state
+    setEnablePasswordlessShare(newEnablePasswordlessShare || false); // Set new state
     if ("token" in authDetails) {
       setToken(authDetails.token);
       setUsername(""); // Clear other auth method
@@ -179,6 +195,8 @@ const Index = () => {
             initialR2CustomDomain={r2CustomDomain}
             initialYourlsUrl={yourlsUrl}
             initialYourlsToken={yourlsToken}
+            initialDefaultSharePassword={defaultSharePassword}
+            initialEnablePasswordlessShare={enablePasswordlessShare}
             onSubmit={handleConnectionSubmit}
             isUpdate={!!((token || username) && serverUrl)} // Show as update if any credential exists
           />
@@ -221,6 +239,8 @@ const Index = () => {
                 initialR2CustomDomain={r2CustomDomain}
                 initialYourlsUrl={yourlsUrl}
                 initialYourlsToken={yourlsToken}
+                initialDefaultSharePassword={defaultSharePassword}
+                initialEnablePasswordlessShare={enablePasswordlessShare}
                 onSubmit={handleConnectionSubmit}
                 isUpdate={true}
               />

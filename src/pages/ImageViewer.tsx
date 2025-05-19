@@ -202,49 +202,120 @@ const ImageViewer: React.FC = () => {
   useEffect(() => {
     if (encryptedConfigParam && !initialPasswordLoadAttempted && !tempAlistConfig) {
       setInitialPasswordLoadAttempted(true); // Mark that we are attempting now
-      try {
-        const savedPasswords = JSON.parse(localStorage.getItem('sharedLinkPasswords_v1') || '{}');
-        const savedPwd = savedPasswords[encryptedConfigParam];
+      let decryptedSuccessfully = false;
 
-        if (savedPwd) {
-          console.log("[ImageViewer] Found saved password, attempting auto-decryption...");
-          // Directly pass encrypted payload and saved password to the helper
-          const config = decryptAndParsePayload(encryptedConfigParam, savedPwd);
+      // 0. Try with password from URL params if pm=1 and pk are present
+      const passwordlessModeParam = searchParams.get('pm');
+      const encodedPasswordKeyParam = searchParams.get('pk');
 
+      if (passwordlessModeParam === '1' && encodedPasswordKeyParam) {
+        console.log("[ImageViewer] Passwordless mode detected in URL, attempting decryption with embedded key.");
+        try {
+          const embeddedPassword = atob(decodeURIComponent(encodedPasswordKeyParam));
+          const config = decryptAndParsePayload(encryptedConfigParam, embeddedPassword);
           if (config.serverUrl) {
             setTempAlistConfig(config);
             if (mode === 'gallery' && config.imagePaths && Array.isArray(config.imagePaths)) {
               setDecryptedImagePaths(config.imagePaths);
             }
-            setDecryptionPassword(savedPwd); // Pre-fill for consistency, though not strictly needed if prompt is bypassed
-            setShowPasswordPrompt(false);    // Bypass prompt
-            setTriedDecryption(true);       // Mark as successfully decrypted (via auto)
-            console.log("[ImageViewer] Auto-decryption successful with saved password.");
-            // Data loading will be triggered by the main useEffect due to tempAlistConfig change
-            return;
+            setDecryptionPassword(embeddedPassword);
+            setShowPasswordPrompt(false);
+            setTriedDecryption(true);
+            decryptedSuccessfully = true;
+            console.log("[ImageViewer] Auto-decryption successful with password from URL.");
+            // Save this successfully used embedded password for this specific link too
+            try {
+              const savedPasswords = JSON.parse(localStorage.getItem('sharedLinkPasswords_v1') || '{}');
+              savedPasswords[encryptedConfigParam] = embeddedPassword;
+              localStorage.setItem('sharedLinkPasswords_v1', JSON.stringify(savedPasswords));
+            } catch (lsError) { console.error("Failed to save embedded password to link-specific storage", lsError); }
           } else {
-            throw new Error("Invalid config structure from saved password during auto-decryption.");
+            console.warn("[ImageViewer] Decryption with password from URL resulted in invalid config structure.");
+          }
+        } catch (e) {
+          console.warn("[ImageViewer] Decryption with password from URL failed:", e);
+        }
+      }
+
+      // 1. If not decrypted by URL params, try with global default password if passwordless share is enabled locally
+      if (!decryptedSuccessfully) {
+        const enablePasswordlessGlobal = localStorage.getItem("alist_enable_passwordless_share") === "true";
+        const defaultSharePasswordGlobal = localStorage.getItem("alist_default_share_password");
+
+        if (enablePasswordlessGlobal && defaultSharePasswordGlobal) {
+          console.log("[ImageViewer] Passwordless share enabled globally, attempting decryption with default password.");
+          try {
+            const config = decryptAndParsePayload(encryptedConfigParam, defaultSharePasswordGlobal);
+            if (config.serverUrl) {
+              setTempAlistConfig(config);
+              if (mode === 'gallery' && config.imagePaths && Array.isArray(config.imagePaths)) {
+                setDecryptedImagePaths(config.imagePaths);
+              }
+              setDecryptionPassword(defaultSharePasswordGlobal); // Set for consistency
+              setShowPasswordPrompt(false);
+              setTriedDecryption(true);
+              decryptedSuccessfully = true;
+              console.log("[ImageViewer] Auto-decryption successful with global default password.");
+              // Save this successfully used global default password for this specific link too
+              try {
+                const savedPasswords = JSON.parse(localStorage.getItem('sharedLinkPasswords_v1') || '{}');
+                savedPasswords[encryptedConfigParam] = defaultSharePasswordGlobal;
+                localStorage.setItem('sharedLinkPasswords_v1', JSON.stringify(savedPasswords));
+              } catch (lsError) { console.error("Failed to save global default share password to link-specific storage", lsError); }
+            } else {
+              console.warn("[ImageViewer] Decryption with global default password resulted in invalid config structure.");
+            }
+          } catch (e) {
+            console.warn("[ImageViewer] Decryption with global default password failed:", e);
           }
         }
-      } catch (e) {
-        console.warn("[ImageViewer] Auto-decryption with saved password failed:", e);
+      }
+      
+      // 2. If not decrypted yet, try with link-specific saved password
+      if (!decryptedSuccessfully) {
         try {
           const savedPasswords = JSON.parse(localStorage.getItem('sharedLinkPasswords_v1') || '{}');
-          delete savedPasswords[encryptedConfigParam];
-          localStorage.setItem('sharedLinkPasswords_v1', JSON.stringify(savedPasswords));
-          console.log("[ImageViewer] Cleared bad/failed saved password for this link.");
-        } catch (lsError) { console.error("Error clearing bad password from localStorage", lsError); }
+          const savedPwd = savedPasswords[encryptedConfigParam];
+
+          if (savedPwd) {
+            console.log("[ImageViewer] Found link-specific saved password, attempting auto-decryption...");
+            const config = decryptAndParsePayload(encryptedConfigParam, savedPwd);
+            if (config.serverUrl) {
+              setTempAlistConfig(config);
+              if (mode === 'gallery' && config.imagePaths && Array.isArray(config.imagePaths)) {
+                setDecryptedImagePaths(config.imagePaths);
+              }
+              setDecryptionPassword(savedPwd);
+              setShowPasswordPrompt(false);
+              setTriedDecryption(true);
+              decryptedSuccessfully = true;
+              console.log("[ImageViewer] Auto-decryption successful with link-specific saved password.");
+            } else {
+              throw new Error("Invalid config structure from link-specific saved password.");
+            }
+          }
+        } catch (e) {
+          console.warn("[ImageViewer] Auto-decryption with link-specific saved password failed:", e);
+          try { // Clear bad link-specific password
+            const savedPasswords = JSON.parse(localStorage.getItem('sharedLinkPasswords_v1') || '{}');
+            delete savedPasswords[encryptedConfigParam];
+            localStorage.setItem('sharedLinkPasswords_v1', JSON.stringify(savedPasswords));
+            console.log("[ImageViewer] Cleared bad/failed link-specific saved password.");
+          } catch (lsError) { console.error("Error clearing bad link-specific password from localStorage", lsError); }
+        }
       }
-      // If no saved password, or auto-decryption failed, ensure prompt is shown if it's an encrypted link and we don't have a config yet
-      if (encryptedConfigParam && !tempAlistConfig) {
-          setShowPasswordPrompt(true);
+
+      // 3. If still not decrypted, and it's an encrypted link, show prompt
+      if (!decryptedSuccessfully && encryptedConfigParam && !tempAlistConfig) {
+        setShowPasswordPrompt(true);
       }
+
     } else if (!encryptedConfigParam && !initialPasswordLoadAttempted) {
-      // For non-encrypted links, ensure prompt is not shown and mark check as done
+      // For non-encrypted links
       setShowPasswordPrompt(false);
       setInitialPasswordLoadAttempted(true);
     }
-  }, [encryptedConfigParam, initialPasswordLoadAttempted, tempAlistConfig, mode, t]); // placeholderDecrypt is a pure function, not a reactive dependency
+  }, [encryptedConfigParam, initialPasswordLoadAttempted, tempAlistConfig, mode, t]); // placeholderDecrypt is a pure function
 
   const objectUrlsToRevokeRef = useRef<string[]>([]);
 

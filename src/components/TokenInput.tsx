@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { useTranslation } from 'react-i18next'; // Import useTranslation
+import { Switch } from "@/components/ui/switch"; // Import Switch
 
 interface TokenInputProps {
   initialToken?: string;
@@ -17,13 +18,17 @@ interface TokenInputProps {
   initialR2CustomDomain?: string; // New prop
   initialYourlsUrl?: string; // New prop for YOURLS URL
   initialYourlsToken?: string; // New prop for YOURLS Token
+  initialDefaultSharePassword?: string; // New prop for default share password
+  initialEnablePasswordlessShare?: boolean; // New prop for enabling passwordless share
   isUpdate?: boolean;
   onSubmit: (
     authDetails: { token: string } | { username?: string; password?: string },
     serverUrl: string,
-    r2CustomDomain?: string, // New parameter in onSubmit
-    yourlsUrl?: string, // New parameter for YOURLS URL
-    yourlsToken?: string // New parameter for YOURLS Token
+    r2CustomDomain?: string,
+    yourlsUrl?: string,
+    yourlsToken?: string,
+    defaultSharePassword?: string, // New parameter
+    enablePasswordlessShare?: boolean // New parameter
   ) => void;
 }
 
@@ -34,9 +39,11 @@ const TokenInput: React.FC<TokenInputProps> = ({
   initialServerUrl = "",
   initialUsername = "",
   initialPassword = "",
-  initialR2CustomDomain = "", // Initialize new prop
-  initialYourlsUrl = "", // Initialize new prop for YOURLS URL
-  initialYourlsToken = "", // Initialize new prop for YOURLS Token
+  initialR2CustomDomain = "",
+  initialYourlsUrl = "",
+  initialYourlsToken = "",
+  initialDefaultSharePassword = "", // Initialize new prop
+  initialEnablePasswordlessShare = false, // Initialize new prop
   isUpdate = false,
   onSubmit,
 }) => {
@@ -45,9 +52,11 @@ const TokenInput: React.FC<TokenInputProps> = ({
   const [serverUrl, setServerUrl] = useState<string>(initialServerUrl);
   const [username, setUsername] = useState<string>(initialUsername);
   const [password, setPassword] = useState<string>(initialPassword);
-  const [r2CustomDomain, setR2CustomDomain] = useState<string>(initialR2CustomDomain); // New state
-  const [yourlsUrl, setYourlsUrl] = useState<string>(initialYourlsUrl); // New state for YOURLS URL
-  const [yourlsToken, setYourlsToken] = useState<string>(initialYourlsToken); // New state for YOURLS Token
+  const [r2CustomDomain, setR2CustomDomain] = useState<string>(initialR2CustomDomain);
+  const [yourlsUrl, setYourlsUrl] = useState<string>(initialYourlsUrl);
+  const [yourlsToken, setYourlsToken] = useState<string>(initialYourlsToken);
+  const [defaultSharePassword, setDefaultSharePassword] = useState<string>(initialDefaultSharePassword); // New state
+  const [enablePasswordlessShare, setEnablePasswordlessShare] = useState<boolean>(initialEnablePasswordlessShare); // New state
   const [authMode, setAuthMode] = useState<AuthMode>("token");
   const [isValidating, setIsValidating] = useState<boolean>(false);
   const [isGuestConnecting, setIsGuestConnecting] = useState<boolean>(false); // New state for guest button loading
@@ -62,7 +71,7 @@ const TokenInput: React.FC<TokenInputProps> = ({
     } else if (initialUsername) {
       setAuthMode("credentials");
     }
-  }, [initialToken, initialUsername]);
+  }, [initialToken, initialUsername, initialDefaultSharePassword, initialEnablePasswordlessShare]);
 
   const validateAndSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,7 +124,15 @@ const TokenInput: React.FC<TokenInputProps> = ({
       const isValid = await serviceToTest.testConnection();
 
       if (isValid) {
-        onSubmit(authDetails, urlWithProtocol, r2CustomDomain.trim(), yourlsUrl.trim(), yourlsToken.trim()); // Pass r2CustomDomain and YOURLS details
+        onSubmit(
+          authDetails,
+          urlWithProtocol,
+          r2CustomDomain.trim(),
+          yourlsUrl.trim(),
+          yourlsToken.trim(),
+          defaultSharePassword.trim(), // Pass new state
+          enablePasswordlessShare // Pass new state
+        );
         toast.success(t("tokenInputConnectionSuccessful"));
       } else {
         const errorMsg = t("tokenInputConnectionFailed");
@@ -144,7 +161,7 @@ const TokenInput: React.FC<TokenInputProps> = ({
     try {
       // Call the onSubmit prop with guest credentials directly
       // Do NOT set the input field states to maintain privacy
-      await onSubmit({ username: guestUsername, password: guestPassword }, guestServerUrl, "", "", ""); // Pass empty strings for YOURLS
+      await onSubmit({ username: guestUsername, password: guestPassword }, guestServerUrl, "", "", "", "", false); // Pass empty/default for new params
 
       // onSubmit will handle success toast and state updates
     } catch (error: any) {
@@ -219,8 +236,6 @@ const TokenInput: React.FC<TokenInputProps> = ({
               <p className="text-xs text-gray-500">{t("tokenInputR2CustomDomainHint")}</p>
             </div>
 
-:start_line:222
--------
             {/* YOURLS Settings */}
             <div className="flex flex-col space-y-1.5">
               <Label htmlFor="yourlsUrl">{t("tokenInputYourlsUrlLabel")}</Label>
@@ -246,6 +261,34 @@ const TokenInput: React.FC<TokenInputProps> = ({
               />
               <p className="text-xs text-gray-500">{t("tokenInputYourlsTokenHint")}</p>
             </div>
+
+            {/* Default Share Password Settings */}
+            <div className="flex flex-col space-y-1.5">
+              <Label htmlFor="defaultSharePassword">{t("tokenInputDefaultSharePasswordLabel")}</Label>
+              <Input
+                id="defaultSharePassword"
+                type="password"
+                placeholder={t("tokenInputDefaultSharePasswordPlaceholder")}
+                value={defaultSharePassword}
+                onChange={(e) => setDefaultSharePassword(e.target.value)}
+                disabled={isValidating || !enablePasswordlessShare}
+              />
+              <p className="text-xs text-gray-500">{t("tokenInputDefaultSharePasswordHint")}</p>
+            </div>
+
+            <div className="flex items-center space-x-2 pt-2">
+              <Switch
+                id="enablePasswordlessShare"
+                checked={enablePasswordlessShare}
+                onCheckedChange={setEnablePasswordlessShare}
+                disabled={isValidating}
+              />
+              <Label htmlFor="enablePasswordlessShare" className="cursor-pointer">
+                {t("tokenInputEnablePasswordlessShareLabel")}
+              </Label>
+            </div>
+            <p className="text-xs text-gray-500 -mt-3 mb-2">{t("tokenInputEnablePasswordlessShareHint")}</p>
+
 
             <div className="flex flex-col space-y-1.5">
               <Label>{t("tokenInputAuthMethodLabel")}</Label>

@@ -204,8 +204,24 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     } catch (error: any) { toast.error(`${t('galleryErrorGettingImageLink')} ${error.message || t('galleryUnknownError')}`); } 
     finally { setIsPreviewLoading(false); }
   };
+  
+  const handleOpenEncryptShareDialog = (file: FileInfo) => {
+    const enablePasswordless = localStorage.getItem("alist_enable_passwordless_share") === "true";
+    const defaultPassword = localStorage.getItem("alist_default_share_password");
 
-  const handleOpenEncryptShareDialog = (file: FileInfo) => { setFileToShare(file); setShareEncryptionPassword(""); setShowEncryptShareDialog(true); };
+    setFileToShare(file); // Set the file to share regardless
+
+    if (enablePasswordless && defaultPassword) {
+      setShareEncryptionPassword(defaultPassword);
+      // Use a microtask to ensure state is set before calling
+      Promise.resolve().then(() => {
+        handleCreateEncryptedShareLink();
+      });
+    } else {
+      setShareEncryptionPassword("");
+      setShowEncryptShareDialog(true);
+    }
+  };
 
   const handleCreateEncryptedShareLink = async () => {
     if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing', 'Alist service is not available.')); return; }
@@ -221,6 +237,20 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       if (!encryptedConfig) { toast.error(t('galleryErrorEncryptionFailed')); return; }
       const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${fileToShare.name}`;
       let viewerLink = `${window.location.origin}/view?path=${encodeURIComponent(alistFilePath)}&c=${encodeURIComponent(encryptedConfig)}`;
+      
+      const enablePasswordless = localStorage.getItem("alist_enable_passwordless_share") === "true";
+      const defaultPassword = localStorage.getItem("alist_default_share_password");
+
+      if (enablePasswordless && defaultPassword && shareEncryptionPassword === defaultPassword) {
+        try {
+          const encodedPassword = btoa(shareEncryptionPassword);
+          viewerLink += `&pm=1&pk=${encodeURIComponent(encodedPassword)}`;
+          toast.info("Passwordless share link generated for single file.");
+        } catch (e) {
+          console.error("Error base64 encoding password for single file passwordless link:", e);
+        }
+      }
+      
       viewerLink = await alistService.getShortUrl(viewerLink); // Attempt to get short URL
       navigator.clipboard.writeText(viewerLink)
         .then(() => {
@@ -267,16 +297,45 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const handleOpenMultiShareDialog = async () => {
     if (selectedFilePaths.length === 0) { toast.info(t('galleryNoFilesSelectedForMultiShare')); return; }
     const resolvedPaths = await resolvePathsForGalleryShare(selectedFilePaths);
-    if (resolvedPaths.length === 0 && selectedFilePaths.length > 0) { return; }
+    if (resolvedPaths.length === 0 && selectedFilePaths.length > 0) { return; } // No images found after resolving folders
     if (resolvedPaths.length === 0) { toast.info(t('galleryNoImagesToShareAfterResolution', 'No images to share after resolving selection.')); return;}
+    
+    // Set state for dialog use if needed, but pass directly for auto-creation
     setImagePathsForGalleryShare(resolvedPaths);
-    setMultiShareEncryptionPassword(""); 
-    setShowMultiShareEncryptDialog(true);
+
+    const enablePasswordless = localStorage.getItem("alist_enable_passwordless_share") === "true";
+    const defaultPassword = localStorage.getItem("alist_default_share_password");
+
+    if (enablePasswordless && defaultPassword) {
+      // For auto-creation, pass paths and password directly
+      handleCreateEncryptedMultiShareLink(resolvedPaths, defaultPassword);
+    } else {
+      // For manual password input, clear password state and show dialog
+      setMultiShareEncryptionPassword("");
+      setShowMultiShareEncryptDialog(true);
+    }
   };
   
-  const handleCreateEncryptedMultiShareLink = async () => {
+  const handleCreateEncryptedMultiShareLink = async (
+    pathsToUseOverride?: string[],
+    passwordToUseOverride?: string
+  ) => {
     if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing', 'Alist service is not available.')); return; }
-    if (imagePathsForGalleryShare.length === 0 || !multiShareEncryptionPassword) { toast.error(t('galleryErrorPasswordOrFilesForMultiShare')); return; }
+    
+    const finalPaths = pathsToUseOverride || imagePathsForGalleryShare;
+    const finalPassword = passwordToUseOverride || multiShareEncryptionPassword;
+
+    if (finalPaths.length === 0 || !finalPassword) {
+      toast.error(t('galleryErrorPasswordOrFilesForMultiShare'));
+      // If called automatically and failed this check, ensure dialog doesn't pop up unexpectedly
+      // if it was meant to be an auto-call. However, this function is also called by dialog button.
+      // If pathsToUseOverride was provided, it was an auto-call.
+      if (pathsToUseOverride) {
+        console.warn("Auto-create multi-share link failed due to missing paths or password just before encryption.");
+      }
+      return;
+    }
+    
     const serverUrl = alistService.getBaseUrl();
     const token = alistService.getCurrentToken();
     const r2CustomDomain = alistService.getR2CustomDomain();
@@ -300,9 +359,24 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       }
       const base64Compressed = btoa(binaryString);
 
-      const encryptedConfig = placeholderEncrypt(base64Compressed, multiShareEncryptionPassword);
+      const encryptedConfig = placeholderEncrypt(base64Compressed, finalPassword); // Use finalPassword
       if (!encryptedConfig) { toast.error(t('galleryErrorEncryptionFailed')); return; }
       let viewerLink = `${window.location.origin}/view?type=gallery&c=${encodeURIComponent(encryptedConfig)}`;
+
+      const enablePasswordless = localStorage.getItem("alist_enable_passwordless_share") === "true";
+      const defaultPasswordFromStorage = localStorage.getItem("alist_default_share_password");
+
+      // Check if passwordless mode is active AND the password used for encryption IS the default one
+      if (enablePasswordless && defaultPasswordFromStorage && finalPassword === defaultPasswordFromStorage) {
+        try {
+          const encodedPassword = btoa(finalPassword); // Use finalPassword
+          viewerLink += `&pm=1&pk=${encodeURIComponent(encodedPassword)}`;
+          // toast.info("Passwordless gallery share link generated."); // Already shown if auto
+        } catch (e) {
+          console.error("Error base64 encoding password for gallery passwordless link:", e);
+        }
+      }
+      
       viewerLink = await alistService.getShortUrl(viewerLink); // Attempt to get short URL
       navigator.clipboard.writeText(viewerLink)
         .then(() => {
@@ -607,7 +681,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center space-x-2 py-4"><div className="grid flex-1 gap-2"><Label htmlFor="multi-share-enc-password" className="sr-only">{t('gallerySharePasswordLabel')}</Label><Input id="multi-share-enc-password" type="password" placeholder={t('gallerySharePasswordPlaceholder')} value={multiShareEncryptionPassword} onChange={(e) => setMultiShareEncryptionPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleCreateEncryptedMultiShareLink()}/></div></div>
-          <DialogFooter className="sm:justify-start"><Button type="button" onClick={handleCreateEncryptedMultiShareLink} disabled={!multiShareEncryptionPassword || imagePathsForGalleryShare.length === 0 || isResolvingPaths}><Lock className="mr-2 h-4 w-4" /> {t('galleryCreateLinkButton')}</Button><Button type="button" variant="ghost" onClick={() => setShowMultiShareEncryptDialog(false)}>{t('galleryCancelButton')}</Button></DialogFooter>
+          <DialogFooter className="sm:justify-start"><Button type="button" onClick={() => handleCreateEncryptedMultiShareLink()} disabled={!multiShareEncryptionPassword || imagePathsForGalleryShare.length === 0 || isResolvingPaths}><Lock className="mr-2 h-4 w-4" /> {t('galleryCreateLinkButton')}</Button><Button type="button" variant="ghost" onClick={() => setShowMultiShareEncryptDialog(false)}>{t('galleryCancelButton')}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 

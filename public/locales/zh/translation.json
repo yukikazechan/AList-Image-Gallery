@@ -245,5 +245,10 @@
   "tokenInputYourlsUrlHint": "填写 YOURLS 服务器的 API 地址。",
   "tokenInputYourlsTokenLabel": "YOURLS 密钥签名令牌 (可选)",
   "tokenInputYourlsTokenPlaceholder": "输入您的 YOURLS 密钥签名令牌",
-  "tokenInputYourlsTokenHint": "从 YOURLS 后台获取。"
+  "tokenInputYourlsTokenHint": "从 YOURLS 后台获取。",
+  "tokenInputDefaultSharePasswordLabel": "认证信息加密 (用于无密码分享)",
+  "tokenInputDefaultSharePasswordPlaceholder": "请输入一个强密码",
+  "tokenInputDefaultSharePasswordHint": "如果启用了“无密码分享”，此密码将被使用。它用于加密分享信息。",
+  "tokenInputEnablePasswordlessShareLabel": "启用无密码分享",
+  "tokenInputEnablePasswordlessShareHint": "如果启用，分享的链接将不需要用户输入密码。默认分享密码将在内部使用。"
 }
