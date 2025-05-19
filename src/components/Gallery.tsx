@@ -270,7 +270,10 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       navigator.clipboard.writeText(viewerLink)
         .then(() => {
           toast.success(t('galleryEncryptedLinkCopied') + (isMobile ? " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.') : ""));
-          toast.info(t('gallerySharePasswordReminder'));
+          const isPasswordlessDefaultShareSingle = enablePasswordlessGlobal && defaultPasswordFromStorage && finalPassword === defaultPasswordFromStorage;
+          if (finalPassword && !isPasswordlessDefaultShareSingle) {
+            toast.info(t('gallerySharePasswordReminder'));
+          }
           setManualCopyLink(viewerLink);
           setShowManualCopyDialog(true);
         })
@@ -421,7 +424,10 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
       navigator.clipboard.writeText(viewerLink)
         .then(() => {
           toast.success(t('galleryMultiEncryptedLinkCopied') + (isMobile ? " " + t('galleryMobileCopyPrompt', 'Please try pasting. If it fails, you may need to copy it manually.') : ""));
-          toast.info(t('gallerySharePasswordReminder'));
+          const isPasswordlessDefaultShareMulti = enablePasswordless && defaultPasswordFromStorage && finalPassword === defaultPasswordFromStorage;
+          if (finalPassword && !isPasswordlessDefaultShareMulti) {
+            toast.info(t('gallerySharePasswordReminder'));
+          }
           setManualCopyLink(viewerLink);
           setShowManualCopyDialog(true);
         })

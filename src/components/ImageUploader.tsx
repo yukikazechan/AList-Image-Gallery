@@ -341,7 +341,9 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       navigator.clipboard.writeText(finalShareLink)
         .then(() => {
           toast.success(t('imageUploaderEncryptedLinkCopied', 'Encrypted viewer link copied!'));
-          if (finalEncryptionPassword) { // Only show reminder if a password was used
+          // Only show reminder if a password was used AND it's not the passwordless default share
+          const isPasswordlessDefaultShare = enablePasswordlessSetting && defaultPasswordSetting && finalEncryptionPassword === defaultPasswordSetting;
+          if (finalEncryptionPassword && !isPasswordlessDefaultShare) {
             toast.info(t('imageUploaderSharePasswordReminder', 'Remember to share the password separately with the recipient.'));
           }
           // copyToClipboardFallback(finalShareLink); // Moved up to always show
