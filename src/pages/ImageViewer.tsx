@@ -577,7 +577,7 @@ const ImageViewer: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col items-start min-h-screen bg-gray-100 dark:bg-slate-900 p-4">
+    <div className="flex flex-col items-start min-h-screen bg-gray-100 dark:bg-black p-4">
       <div className="w-full mb-4 flex justify-between items-center">
         <Button variant="outline" asChild size="sm">
            <Link to="/"><ChevronLeft className="mr-1 h-4 w-4" />{t('imageViewer.backToGalleryButton', 'Back to Main')}</Link>
@@ -607,8 +607,8 @@ const ImageViewer: React.FC = () => {
           {/* Pagination UI removed */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {galleryItems.slice(0, numDisplayed).map((item) => (
-              <div key={item.path} className="border rounded-lg overflow-hidden shadow-lg dark:bg-slate-800 aspect-square flex flex-col">
-                <div className="flex-grow flex items-center justify-center overflow-hidden bg-gray-200 dark:bg-slate-700">
+              <div key={item.path} className="border rounded-lg overflow-hidden shadow-lg dark:bg-black aspect-square flex flex-col">
+                <div className="flex-grow flex items-center justify-center overflow-hidden bg-gray-200 dark:bg-black">
                   {item.isLoading && !item.src && (<Loader2 className="h-8 w-8 animate-spin" />)}
                   {item.error && (
                     <div className="p-2 text-center">
@@ -621,7 +621,7 @@ const ImageViewer: React.FC = () => {
                     <img src={item.src} alt={item.path} className="w-full h-full object-cover cursor-zoom-in" onClick={() => openZoomModal(item.src, item.path)} />
                   )}
                 </div>
-                <p className="text-xs p-2 truncate dark:text-slate-300 bg-white dark:bg-slate-800 border-t dark:border-slate-700" title={item.path}>{item.path.substring(item.path.lastIndexOf('/') + 1)}</p>
+                <p className="text-xs p-2 truncate dark:text-slate-300 bg-white dark:bg-black border-t dark:border-slate-700" title={item.path}>{item.path.substring(item.path.lastIndexOf('/') + 1)}</p>
               </div>
             ))}
           </div>
@@ -651,7 +651,7 @@ const ImageViewer: React.FC = () => {
 
       {/* Zoom Modal */}
       <Dialog open={isZoomModalOpen} onOpenChange={setIsZoomModalOpen}>
-        <DialogContent className="max-w-[90vw] max-h-[90vh] w-auto h-auto p-2 sm:p-4 flex flex-col bg-white dark:bg-slate-900 !rounded-lg">
+        <DialogContent className="max-w-[90vw] max-h-[90vh] w-auto h-auto p-2 sm:p-4 flex flex-col bg-white dark:bg-black !rounded-lg">
           <DialogHeader className="flex flex-row justify-between items-center py-3"> {/* Increased vertical padding */}
             <DialogTitle className="truncate max-w-[calc(100%-130px)] text-sm sm:text-base">{zoomedImageAlt}</DialogTitle> {/* Reserved more space for buttons */}
             <div className="flex items-center space-x-1.5 flex-shrink-0"> {/* Added flex-shrink-0 and slightly increased spacing */}
