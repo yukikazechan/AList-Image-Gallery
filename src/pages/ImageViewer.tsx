@@ -21,7 +21,8 @@ interface DecryptedConfig {
   serverUrl: string;
   authDetails: AuthDetails | null;
   r2CustomDomain?: string;
-  imagePaths?: string[]; 
+  imagePaths?: string[];
+  galleryTitle?: string; // Added for custom gallery title
 }
 
 interface GalleryItem {
@@ -597,7 +598,10 @@ const ImageViewer: React.FC = () => {
 
       {mode === 'gallery' && galleryItems.length > 0 && (
         <div className="w-full">
-          <h2 className="text-2xl font-semibold mb-4 text-center">{t('imageViewer.galleryTitle', 'Image Gallery')} ({galleryItems.length})</h2>
+          <h2 className="text-2xl font-semibold mb-4 text-center">
+            {tempAlistConfig?.galleryTitle || t('imageViewer.galleryTitle', 'Image Gallery')}
+            {galleryItems.length > 0 && ` (${galleryItems.length})`}
+          </h2>
           {error && <p className="text-red-500 text-center mb-4">{error}</p>}
 
           {/* Pagination UI removed */}

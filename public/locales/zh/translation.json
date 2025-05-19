@@ -251,5 +251,8 @@
   "tokenInputDefaultSharePasswordPlaceholder": "请输入一个强密码",
   "tokenInputDefaultSharePasswordHint": "如果启用了“无密码分享”，此密码将被使用。它用于加密分享信息。",
   "tokenInputEnablePasswordlessShareLabel": "启用无密码分享",
-  "tokenInputEnablePasswordlessShareHint": "如果启用，分享的链接将不需要用户输入密码。默认分享密码将在内部使用。"
+  "tokenInputEnablePasswordlessShareHint": "如果启用，分享的链接将不需要用户输入密码。默认分享密码将在内部使用。",
+  "galleryCustomTitleLabel": "画廊标题（可选）",
+  "galleryCustomTitlePlaceholder": "输入自定义画廊标题",
+  "galleryMultiShareEncryptDescPasswordless": "为您的画廊输入一个标题（可选）。链接将使用预设的默认密码进行加密。"
 }
