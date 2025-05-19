@@ -267,7 +267,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     setShowManualCopyDialog(true);
   };
 
-  const handleCreateEncryptedShareLinkForUploader = (
+  const handleCreateEncryptedShareLinkForUploader = async ( // Make function async
     pathToShareOverride?: string,
     encryptionPasswordOverride?: string
   ) => {
@@ -331,22 +331,25 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
           console.error("Error base64 encoding password for passwordless link:", e);
         }
       }
-      
-      console.log("Generated uploader encrypted link:", viewerLink);
-      copyToClipboardFallback(viewerLink); // Always show manual copy dialog first
 
-      navigator.clipboard.writeText(viewerLink)
+      // Get short URL if service is available
+      const finalShareLink = await alistService.getShortUrl(viewerLink);
+      
+      console.log("Generated uploader encrypted link (shortened):", finalShareLink);
+      copyToClipboardFallback(finalShareLink); // Always show manual copy dialog first
+
+      navigator.clipboard.writeText(finalShareLink)
         .then(() => {
           toast.success(t('imageUploaderEncryptedLinkCopied', 'Encrypted viewer link copied!'));
           if (finalEncryptionPassword) { // Only show reminder if a password was used
             toast.info(t('imageUploaderSharePasswordReminder', 'Remember to share the password separately with the recipient.'));
           }
-          // copyToClipboardFallback(viewerLink); // Moved up to always show
+          // copyToClipboardFallback(finalShareLink); // Moved up to always show
         })
         .catch(err => {
           console.error('Failed to copy uploader encrypted link: ', err);
           toast.error(t('galleryErrorCopyingLinkGeneric', 'Failed to copy link. You may need to do it manually.'));
-          // copyToClipboardFallback(viewerLink); // Already called above
+          // copyToClipboardFallback(finalShareLink); // Already called above
         });
 
       // Close dialog only if it was open and we are not overriding (i.e., called from dialog)
