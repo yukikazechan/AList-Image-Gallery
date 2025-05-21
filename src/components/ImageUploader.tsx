@@ -726,7 +726,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
                  {generatedLinkContent && generatedLinkContent.itemAlistPath === item.alistPath && (
                    <div className="mt-2 space-y-1">
                      <Label htmlFor={`generated-link-${index}-${generatedLinkContent.type}`} className="text-xs">
-                       {generatedLinkContent.type.toUpperCase()} {t('imageUploaderLinkFor', {fileName: item.fileName})}
+                       {t('imageUploaderLinkFor', {fileName: item.fileName, type: generatedLinkContent.type.toUpperCase()})}
                      </Label>
                      <Textarea
                        id={`generated-link-${index}-${generatedLinkContent.type}`}
