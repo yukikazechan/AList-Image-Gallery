@@ -82,7 +82,18 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         }
       });
     };
-  }, [selectedFilePreviews]); // Important: This cleans up URLs when selectedFilePreviews changes or component unmounts.
+  }, [selectedFilePreviews]);
+
+  // Effect for cleaning up blob URLs from uploadedItems
+  useEffect(() => {
+    return () => {
+      uploadedItems.forEach(item => {
+        if (item.localPreviewUrl && item.localPreviewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(item.localPreviewUrl);
+        }
+      });
+    };
+  }, [uploadedItems]);
 
   const loadDirectories = useCallback(async () => {
     if (!alistService) {
@@ -118,6 +129,12 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   }, [alistService, currentPath, loadDirectories, t]); // directoryPasswords is a dep of loadDirectories
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Clean up previously uploaded items' blob URLs when new files are selected
+    uploadedItems.forEach(item => {
+      if (item.localPreviewUrl && item.localPreviewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(item.localPreviewUrl);
+      }
+    });
     setUploadedItems([]);
     setNumDisplayedUploadedItems(PREVIEWS_PER_LOAD);
 
@@ -195,7 +212,14 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     if (!alistService || !files || files.length === 0) return;
 
     setIsUploading(true);
+    // Clean up previously uploaded items' blob URLs before starting new upload
+    uploadedItems.forEach(item => {
+      if (item.localPreviewUrl && item.localPreviewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(item.localPreviewUrl);
+      }
+    });
     setUploadedItems([]); // Clear previous results
+
     const newUploadedItems: { alistPath: string; localPreviewUrl?: string; fileName: string }[] = [];
     let anyUploadSucceeded = false;
     const createdRemoteDirsThisSession = new Set<string>();
@@ -275,41 +299,28 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
             // For now, let's try to create a blob URL from the original file for immediate preview.
             // This avoids re-fetching if the original file object is still accessible and valid.
             // However, `imagePreviewSources` was intended for post-upload fetch.
-            // Let's keep it simple: if we have a dataURL from initial selection, use that.
-            const initialPreview = selectedFilePreviews.find(p => p.name === fileName);
-            if (initialPreview) {
-                localPreviewForUploadedItem = initialPreview.dataUrl;
-            } else {
-              // Fallback: if no initial preview (e.g. folder upload didn't generate them all),
-              // try to create one now. This is less ideal as it might be slow for many files.
-              // Or, decide to fetch from directLink later. For now, keep it simpler.
-              // We can enhance this by fetching from directLink if needed.
-               try {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    // This is async, so updating item directly here is tricky.
-                    // Better to store the blob URL with the item when it's ready.
-                    // For now, we'll rely on initial previews or fetch later.
-                };
-                // reader.readAsDataURL(file); // 'file' is the original File object
-              } catch (e) { console.warn("Could not create inline preview for", fileName); }
+            // Create a new Blob URL for the uploaded item's preview, from the original file object.
+            // This ensures its lifecycle is independent of selectedFilePreviews.
+            if (file && file.type.startsWith("image/")) {
+                localPreviewForUploadedItem = URL.createObjectURL(file);
             }
 
             newUploadedItems.push({ alistPath: uploadedAlistPath, localPreviewUrl: localPreviewForUploadedItem, fileName });
             anyUploadSucceeded = true;
             toast.success(`${fileName} ${t('uploadSuccess')}`);
-        } catch (previewError: any) { // This is the catch for the inner try (getting preview, line 246)
-            console.warn(`[ImageUploader] Could not get/fetch preview for ${uploadedAlistPath} after upload:`, previewError);
-            // Still add the item without a local preview if upload itself was successful before this point
+        } catch (previewError: any) {
+            // This catch block might now be less relevant if localPreviewForUploadedItem is generated synchronously above.
+            // However, if URL.createObjectURL itself could fail, or if there was other async preview logic, it would be useful.
+            // For now, we assume createObjectURL is robust for a File object.
+            console.warn(`[ImageUploader] Error during preview creation for ${uploadedAlistPath}:`, previewError);
             newUploadedItems.push({ alistPath: uploadedAlistPath, fileName }); // Add without localPreviewUrl
-            anyUploadSucceeded = true; // Mark as success if file upload part was okay
-            // toast.success(`${fileName} ${t('uploadSuccess')} (preview failed)`); // Optionally inform about preview failure
+            anyUploadSucceeded = true;
         }
-      } catch (uploadError: any) { // This is the catch for the outer try (uploading file, line 231)
+      } catch (uploadError: any) {
         console.error(`Upload error for file ${fileName} (path: ${relativePath}):`, uploadError);
         toast.error(t('imageUploaderUploadFailedForFile', { fileName: fileName, error: uploadError.message }));
       }
-    } // This closes the for loop (line 218)
+    }
     setUploadedItems(newUploadedItems);
     setNumDisplayedUploadedItems(PREVIEWS_PER_LOAD); // Reset display count for new uploads
     setIsUploading(false);
