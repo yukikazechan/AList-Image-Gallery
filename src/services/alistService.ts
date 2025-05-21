@@ -320,18 +320,9 @@ export class AlistService {
       if (response.data && response.data.code === 200 && response.data.data && response.data.data.raw_url) {
         let rawUrl = response.data.data.raw_url;
 
-        if (rawUrl.includes("sharepoint.com")) {
-          if (rawUrl.startsWith("http:")) {
-            rawUrl = rawUrl.replace(/^http:/, "https:");
-          }
-          if (rawUrl.includes('?')) {
-            if (!rawUrl.match(/[?&]Web=1(?:&|$)/)) { 
-              rawUrl += '&Web=1';
-            }
-          } else {
-            rawUrl += '?Web=1';
-          }
-        } else if (typeof window !== 'undefined') { 
+        // Removed SharePoint specific Web=1 addition
+        // Protocol adjustment based on window.location
+        if (typeof window !== 'undefined') {
           if (window.location.protocol === 'https:') {
             if (rawUrl.startsWith("http:")) rawUrl = rawUrl.replace(/^http:/, 'https:');
           } else if (window.location.protocol === 'http:') {
