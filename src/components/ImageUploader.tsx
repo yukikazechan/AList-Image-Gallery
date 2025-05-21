@@ -44,10 +44,13 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const { t } = useTranslation(); 
   const [isUploading, setIsUploading] = useState(false);
   const [files, setFiles] = useState<FileList | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const [uploadedImageHttpUrls, setUploadedImageHttpUrls] = useState<string[]>([]);
-  const [imagePreviewSources, setImagePreviewSources] = useState<Record<string, string>>({});
+  // Store previews for files selected by the user, before upload
+  const [selectedFilePreviews, setSelectedFilePreviews] = useState<{ name: string; dataUrl: string }[]>([]);
+  // Store details of successfully uploaded files, including their Alist path and a local preview URL (blob/data)
+  const [uploadedItems, setUploadedItems] = useState<{ alistPath: string; localPreviewUrl?: string; fileName: string }[]>([]);
   const [directories, setDirectories] = useState<FileInfo[]>([]);
+  const [numDisplayedPreviews, setNumDisplayedPreviews] = useState<number>(10); // For pre-upload previews
+  const PREVIEWS_PER_LOAD = 10; // Number of previews to load each time
   const [isLoadingDirs, setIsLoadingDirs] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
@@ -101,24 +104,48 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   }, [alistService, currentPath, loadDirectories, t]); // directoryPasswords is a dep of loadDirectories
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setUploadedImageHttpUrls([]);
-    setImagePreviewSources({});
+    setUploadedItems([]); // Clear previously uploaded items display
+    setSelectedFilePreviews([]); // Clear previous selections
+    setNumDisplayedPreviews(PREVIEWS_PER_LOAD); // Reset displayed previews count
+
     if (e.target.files && e.target.files.length > 0) {
       setFiles(e.target.files);
-      const firstFile = e.target.files[0];
-      if (firstFile.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setImagePreviewUrl(reader.result as string);
-        };
-        reader.readAsDataURL(firstFile);
-      } else {
-        setImagePreviewUrl(null); // Not an image, clear preview
-        toast.warning(t('imageUploaderOnlyImagesAllowed'));
+      const currentFiles = Array.from(e.target.files);
+      const newPreviews: { name: string; dataUrl: string }[] = [];
+      let nonImageFound = false;
+
+      currentFiles.forEach(file => {
+        if (file.type.startsWith("image/")) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            newPreviews.push({ name: file.name, dataUrl: reader.result as string });
+            // Update state once all files are processed or in batches
+            if (newPreviews.length + (nonImageFound ? 1 : 0) === currentFiles.length) {
+                 setSelectedFilePreviews(newPreviews);
+            }
+          };
+          reader.readAsDataURL(file);
+        } else {
+          nonImageFound = true;
+          toast.warning(t('imageUploaderSkippingNonImage', { fileName: file.name }));
+          // Ensure state update if this is the last file
+          if (newPreviews.length + 1 === currentFiles.length && newPreviews.length > 0) {
+            setSelectedFilePreviews(newPreviews);
+          }
+        }
+      });
+      if (newPreviews.length === 0 && !nonImageFound && currentFiles.length > 0){
+        // All files were non-images, or some other issue
+         toast.error(t('imageUploaderNoImagesSelectedError', 'No valid image files were selected.'));
+      } else if (newPreviews.length === 0 && nonImageFound && currentFiles.length === 1){
+        // Only one file, and it was not an image
+        setFiles(null); // Clear the FileList if no valid images
       }
+
+
     } else {
       setFiles(null);
-      setImagePreviewUrl(null);
+      setSelectedFilePreviews([]);
     }
   };
 
@@ -143,10 +170,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     if (!alistService || !files || files.length === 0) return;
 
     setIsUploading(true);
-    setUploadedImageHttpUrls([]);
-    setImagePreviewSources({});
-    const newUploadedAlistPaths: string[] = [];
-    const newPreviewSources: Record<string, string> = {};
+    setUploadedItems([]); // Clear previous results
+    const newUploadedItems: { alistPath: string; localPreviewUrl?: string; fileName: string }[] = [];
     let anyUploadSucceeded = false;
     const createdRemoteDirsThisSession = new Set<string>();
 
@@ -216,37 +241,59 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         await alistService.uploadFile(targetUploadDir, new File([file], fileName, {type: determinedMimeType}), fileName);
 
         const uploadedAlistPath = `${targetUploadDir === '/' ? '' : targetUploadDir}/${fileName}`;
-        newUploadedAlistPaths.push(uploadedAlistPath);
+        let localPreviewForUploadedItem: string | undefined = undefined;
 
         try {
-            const directLink = await alistService.getFileLink(uploadedAlistPath);
-            if (directLink) {
-                const imgResponse = await fetch(directLink);
-                if (!imgResponse.ok) {
-                    console.warn(`[ImageUploader] Failed to fetch preview for ${uploadedAlistPath} (status: ${imgResponse.status})`);
-                } else {
-                    const blob = await imgResponse.blob();
-                    newPreviewSources[uploadedAlistPath] = URL.createObjectURL(blob);
-                }
+            // Try to get a local preview URL (blob) for the uploaded item
+            // This re-uses the logic from handleFileChange for consistency if needed,
+            // or directly uses the file if it's simple.
+            // For now, let's try to create a blob URL from the original file for immediate preview.
+            // This avoids re-fetching if the original file object is still accessible and valid.
+            // However, `imagePreviewSources` was intended for post-upload fetch.
+            // Let's keep it simple: if we have a dataURL from initial selection, use that.
+            const initialPreview = selectedFilePreviews.find(p => p.name === fileName);
+            if (initialPreview) {
+                localPreviewForUploadedItem = initialPreview.dataUrl;
+            } else {
+              // Fallback: if no initial preview (e.g. folder upload didn't generate them all),
+              // try to create one now. This is less ideal as it might be slow for many files.
+              // Or, decide to fetch from directLink later. For now, keep it simpler.
+              // We can enhance this by fetching from directLink if needed.
+               try {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    // This is async, so updating item directly here is tricky.
+                    // Better to store the blob URL with the item when it's ready.
+                    // For now, we'll rely on initial previews or fetch later.
+                };
+                // reader.readAsDataURL(file); // 'file' is the original File object
+              } catch (e) { console.warn("Could not create inline preview for", fileName); }
             }
-        } catch (previewError) {
-            console.warn(`[ImageUploader] Could not get/fetch preview for ${uploadedAlistPath}:`, previewError);
+
+            newUploadedItems.push({ alistPath: uploadedAlistPath, localPreviewUrl: localPreviewForUploadedItem, fileName });
+            anyUploadSucceeded = true;
+            toast.success(`${fileName} ${t('uploadSuccess')}`);
+        } catch (previewError: any) { // This is the catch for the inner try (getting preview, line 246)
+            console.warn(`[ImageUploader] Could not get/fetch preview for ${uploadedAlistPath} after upload:`, previewError);
+            // Still add the item without a local preview if upload itself was successful before this point
+            newUploadedItems.push({ alistPath: uploadedAlistPath, fileName }); // Add without localPreviewUrl
+            anyUploadSucceeded = true; // Mark as success if file upload part was okay
+            // toast.success(`${fileName} ${t('uploadSuccess')} (preview failed)`); // Optionally inform about preview failure
         }
-        anyUploadSucceeded = true;
-        toast.success(`${fileName} ${t('uploadSuccess')}`);
-      } catch (error: any) {
-        console.error(`Upload error for file ${fileName} (path: ${relativePath}):`, error);
-        toast.error(t('imageUploaderUploadFailedForFile', { fileName: fileName, error: error.message }));
+      } catch (uploadError: any) { // This is the catch for the outer try (uploading file, line 231)
+        console.error(`Upload error for file ${fileName} (path: ${relativePath}):`, uploadError);
+        toast.error(t('imageUploaderUploadFailedForFile', { fileName: fileName, error: uploadError.message }));
       }
-    }
-    setUploadedImageHttpUrls(newUploadedAlistPaths);
-    setImagePreviewSources(newPreviewSources);
+    } // This closes the for loop (line 218)
+    setUploadedItems(newUploadedItems);
     setIsUploading(false);
     if (anyUploadSucceeded) {
         onUploadSuccess();
         loadDirectories(); // Refresh directory listing after successful uploads
+        setSelectedFilePreviews([]); // Clear selection previews after successful upload
+        setFiles(null); // Clear the file input
     }
-  }, [alistService, files, currentPath, onUploadSuccess, t, directoryPasswords, loadDirectories]);
+  }, [alistService, files, currentPath, onUploadSuccess, t, directoryPasswords, loadDirectories, selectedFilePreviews]);
   
   const handleOpenEncryptShareDialogForUploader = (alistPath: string) => {
     const enablePasswordless = localStorage.getItem("alist_enable_passwordless_share") === "true";
@@ -389,11 +436,52 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   }, [t]);
 
+  const handleCopyMarkdownLinkForUploader = async (alistPath: string, fileName: string) => {
+    if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing')); return; }
+    try {
+      const directUrl = await alistService.getFileLink(alistPath);
+      if (directUrl) {
+        copyToClipboard(`![${fileName}](${directUrl})`, 'Markdown Link');
+      } else {
+        toast.error(t('galleryErrorGettingDirectLink'));
+      }
+    } catch (error: any) {
+      toast.error(`${t('galleryErrorGettingDirectLink')} ${error.message || ''}`);
+    }
+  };
+
+  const handleCopyHtmlLinkForUploader = async (alistPath: string, fileName: string) => {
+    if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing')); return; }
+    try {
+      const directUrl = await alistService.getFileLink(alistPath);
+      if (directUrl) {
+        copyToClipboard(`<img src="${directUrl}" alt="${fileName}">`, 'HTML Link');
+      } else {
+        toast.error(t('galleryErrorGettingDirectLink'));
+      }
+    } catch (error: any) {
+      toast.error(`${t('galleryErrorGettingDirectLink')} ${error.message || ''}`);
+    }
+  };
+
+  const handleCopyUbbLinkForUploader = async (alistPath: string, fileName: string) => {
+    if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing')); return; }
+    try {
+      const directUrl = await alistService.getFileLink(alistPath);
+      if (directUrl) {
+        copyToClipboard(`[img]${directUrl}[/img]`, 'UBB Link');
+      } else {
+        toast.error(t('galleryErrorGettingDirectLink'));
+      }
+    } catch (error: any) {
+      toast.error(`${t('galleryErrorGettingDirectLink')} ${error.message || ''}`);
+    }
+  };
+
   const handlePathChange = (newPath: string) => {
     onPathChange(newPath); // Propagate path change
-    setUploadedImageHttpUrls([]);
-    setImagePreviewSources({});
-    setImagePreviewUrl(null);
+    setUploadedItems([]);
+    setSelectedFilePreviews([]);
     setFiles(null);
     // loadDirectories() will be called by useEffect due to currentPath change
   };
@@ -509,33 +597,72 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
               className="hidden"
               disabled={!!connectionError || isUploading}
             />
-            {(!files || files.length === 0) && (<p className="text-sm text-gray-500 dark:text-slate-400">{t('imageUploaderNoFileSelected')}</p>)}
-            {imagePreviewUrl && ( // This preview shows the first selected file, mainly for individual file selection
-              <div className="mt-2">
-                <img src={imagePreviewUrl} alt="Preview" className="max-h-48 max-w-full rounded-lg"/>
+            {(!files || files.length === 0) && selectedFilePreviews.length === 0 && (<p className="text-sm text-gray-500 dark:text-slate-400">{t('imageUploaderNoFileSelected')}</p>)}
+            
+            {/* Display previews of selected files before upload */}
+            {selectedFilePreviews.length > 0 && (
+              <div className="w-full space-y-3 mt-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                  {selectedFilePreviews.slice(0, numDisplayedPreviews).map((preview, index) => (
+                    <div key={index} className="relative aspect-square border rounded-md overflow-hidden">
+                      <img src={preview.dataUrl} alt={preview.name} title={preview.name} className="object-cover w-full h-full" />
+                      <p className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 truncate">{preview.name}</p>
+                    </div>
+                  ))}
+                </div>
+                {selectedFilePreviews.length > numDisplayedPreviews && (
+                  <div className="text-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setNumDisplayedPreviews(prev => Math.min(prev + PREVIEWS_PER_LOAD, selectedFilePreviews.length))}
+                    >
+                      {t('imageUploaderLoadMorePreviews', 'Load More Previews')} ({selectedFilePreviews.length - numDisplayedPreviews} {t('imageUploaderRemaining', 'remaining')})
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
-            <Button onClick={handleUpload} disabled={!files || isUploading || !!connectionError} className="w-full sm:w-auto">
+
+            <Button onClick={handleUpload} disabled={!files || isUploading || !!connectionError || selectedFilePreviews.length === 0} className="w-full sm:w-auto mt-4">
               {isUploading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t('imageUploaderUploading')}</>) : (<><Upload className="mr-2 h-4 w-4" />{t('imageUploaderUploadTo', { path: currentPath })}</>)}
             </Button>
           </div>
           
-          {uploadedImageHttpUrls.length > 0 && (
+          {/* Display uploaded items with previews and actions */}
+          {uploadedItems.length > 0 && (
             <div className="mt-6 space-y-4">
-              <h3 className="font-medium">{t('imageUploaderUploadedImageUrls')}</h3>
-              {uploadedImageHttpUrls.map((alistFilePath, index) => (
-                <div key={index} className="flex items-center space-x-2">
-                  <Input value={alistFilePath} readOnly className="flex-1" />
-                  <Button onClick={() => handleOpenEncryptShareDialogForUploader(alistFilePath)} variant="outline" title={t('imageUploaderShareWithPasswordTooltip', "Share with password (embeds config)")}>
-                    <Share2 className="h-4 w-4 mr-1" /> {t('imageUploaderShareEncryptedButton', 'Share Link')}
-                  </Button>
-                </div>
+              <h3 className="font-medium">{t('imageUploaderUploadedImages')}</h3>
+              {uploadedItems.map((item, index) => (
+                <Card key={index} className="p-3">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
+                    {item.localPreviewUrl && (
+                      <img
+                        src={item.localPreviewUrl}
+                        alt={item.fileName}
+                        className="w-20 h-20 object-cover rounded border"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }} // Hide if preview fails
+                      />
+                    )}
+                    <div className="flex-grow">
+                      <p className="text-sm font-medium truncate" title={item.alistPath}>{item.fileName}</p>
+                      <Input value={item.alistPath} readOnly className="mt-1 text-xs" />
+                    </div>
+                    <div className="flex flex-col space-y-1 sm:space-y-0 sm:flex-row sm:flex-wrap sm:space-x-1 self-start sm:self-center pt-2 sm:pt-0 gap-1">
+                       <Button
+                          onClick={() => handleOpenEncryptShareDialogForUploader(item.alistPath)}
+                          variant="outline" size="sm"
+                          title={t('imageUploaderShareWithPasswordTooltip', "Share with password (embeds config)")}
+                        >
+                         <Share2 className="h-3.5 w-3.5 mr-1" /> {t('imageUploaderShareEncryptedButton', 'Share')}
+                       </Button>
+                       <Button variant="outline" size="sm" onClick={() => handleCopyMarkdownLinkForUploader(item.alistPath, item.fileName)} title={t('galleryCopyMarkdownTooltip')}>MD</Button>
+                       <Button variant="outline" size="sm" onClick={() => handleCopyHtmlLinkForUploader(item.alistPath, item.fileName)} title={t('galleryCopyHtmlTooltip')}>HTML</Button>
+                       <Button variant="outline" size="sm" onClick={() => handleCopyUbbLinkForUploader(item.alistPath, item.fileName)} title={t('galleryCopyUbbTooltip')}>UBB</Button>
+                    </div>
+                  </div>
+                </Card>
               ))}
-              {uploadedImageHttpUrls[0] && imagePreviewSources[uploadedImageHttpUrls[0]] && (
-                <div className="mt-2">
-                  <img src={imagePreviewSources[uploadedImageHttpUrls[0]]} alt={t('imageUploaderUploadedPreviewAlt') || "Uploaded Preview"} className="max-h-64 max-w-full rounded-lg" onError={(e) => { const target = e.currentTarget as HTMLImageElement; console.warn(`[ImageUploader] Image preview failed for src: ${target.src}. Original Alist path was: ${uploadedImageHttpUrls[0]}`); target.style.display = 'none'; toast.error(t('imageUploaderPreviewFailed', {fileName: uploadedImageHttpUrls[0] ? uploadedImageHttpUrls[0].substring(uploadedImageHttpUrls[0].lastIndexOf('/') + 1) : 'unknown file'})); }} />
-                </div>
-              )}
             </div>
           )}
         </div>
