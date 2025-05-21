@@ -73,6 +73,17 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   }, [showManualCopyDialog]);
 
+  // Effect for cleaning up blob URLs from selectedFilePreviews
+  useEffect(() => {
+    return () => {
+      selectedFilePreviews.forEach(preview => {
+        if (preview.dataUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(preview.dataUrl);
+        }
+      });
+    };
+  }, [selectedFilePreviews]); // Important: This cleans up URLs when selectedFilePreviews changes or component unmounts.
+
   const loadDirectories = useCallback(async () => {
     if (!alistService) {
       setDirectories([]);
@@ -107,10 +118,17 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   }, [alistService, currentPath, loadDirectories, t]); // directoryPasswords is a dep of loadDirectories
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setUploadedItems([]); // Clear previously uploaded items display
-    setNumDisplayedUploadedItems(PREVIEWS_PER_LOAD); // Reset count for uploaded items as well
-    setSelectedFilePreviews([]); // Clear previous selections
-    setNumDisplayedPreviews(PREVIEWS_PER_LOAD); // Reset displayed previews count
+    setUploadedItems([]);
+    setNumDisplayedUploadedItems(PREVIEWS_PER_LOAD);
+
+    // Revoke any existing blob URLs before creating new ones
+    selectedFilePreviews.forEach(preview => {
+      if (preview.dataUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(preview.dataUrl);
+      }
+    });
+    setSelectedFilePreviews([]);
+    setNumDisplayedPreviews(PREVIEWS_PER_LOAD);
 
     if (e.target.files && e.target.files.length > 0) {
       setFiles(e.target.files);
@@ -120,36 +138,39 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
       currentFiles.forEach(file => {
         if (file.type.startsWith("image/")) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            newPreviews.push({ name: file.name, dataUrl: reader.result as string });
-            // Update state once all files are processed or in batches
-            if (newPreviews.length + (nonImageFound ? 1 : 0) === currentFiles.length) {
-                 setSelectedFilePreviews(newPreviews);
-            }
-          };
-          reader.readAsDataURL(file);
+          const blobUrl = URL.createObjectURL(file);
+          newPreviews.push({ name: file.name, dataUrl: blobUrl });
         } else {
           nonImageFound = true;
           toast.warning(t('imageUploaderSkippingNonImage', { fileName: file.name }));
-          // Ensure state update if this is the last file
-          if (newPreviews.length + 1 === currentFiles.length && newPreviews.length > 0) {
-            setSelectedFilePreviews(newPreviews);
+          // Ensure state update if this is the last file (and some valid previews were generated)
+          if (newPreviews.length > 0 && (newPreviews.length + 1 === currentFiles.length)) {
+             // This case might be redundant if the main setSelectedFilePreviews below handles it.
           }
         }
       });
-      if (newPreviews.length === 0 && !nonImageFound && currentFiles.length > 0){
-        // All files were non-images, or some other issue
-         toast.error(t('imageUploaderNoImagesSelectedError', 'No valid image files were selected.'));
-      } else if (newPreviews.length === 0 && nonImageFound && currentFiles.length === 1){
-        // Only one file, and it was not an image
-        setFiles(null); // Clear the FileList if no valid images
+
+      // After iterating all files, set the previews
+      if (newPreviews.length > 0) {
+        setSelectedFilePreviews(newPreviews);
+      }
+
+      if (newPreviews.length === 0 && currentFiles.length > 0) { // All files were skipped or invalid
+        if (nonImageFound) { // If at least one was skipped due to type
+             // Toast for skipping already shown. If no valid images remain:
+             if(currentFiles.every(f => !f.type.startsWith("image/"))) {
+                toast.error(t('imageUploaderNoImagesSelectedError', 'No valid image files were selected.'));
+             }
+        } else { // No files were even processed as images (e.g. all had errors before type check)
+            toast.error(t('imageUploaderNoImagesSelectedError', 'No valid image files were selected.'));
+        }
+        setFiles(null); // Clear the FileList if no valid images resulted in previews
       }
 
 
-    } else {
+    } else { // No files selected in input
       setFiles(null);
-      setSelectedFilePreviews([]);
+      // selectedFilePreviews already cleaned up at the start of function or by useEffect
     }
   };
 
@@ -295,7 +316,14 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     if (anyUploadSucceeded) {
         onUploadSuccess();
         loadDirectories(); // Refresh directory listing after successful uploads
-        setSelectedFilePreviews([]); // Clear selection previews after successful upload
+        
+        // Revoke blob URLs from selectedFilePreviews as they are now uploaded or processed
+        selectedFilePreviews.forEach(preview => {
+          if (preview.dataUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(preview.dataUrl);
+          }
+        });
+        setSelectedFilePreviews([]);
         setFiles(null); // Clear the file input
     }
   }, [alistService, files, currentPath, onUploadSuccess, t, directoryPasswords, loadDirectories, selectedFilePreviews]);
