@@ -258,5 +258,6 @@
   "imageUploaderUploadedImages": "已上传图片",
   "imageUploaderLoadMorePreviews": "加载更多预览",
   "imageUploaderRemaining": "剩余",
-  "imageUploaderLinkFor": "{{fileName}} 的 {{type}} 链接："
+  "imageUploaderLinkFor": "{{fileName}} 的 {{type}} 链接：",
+  "galleryDownloadOriginal": "下载原图"
 }

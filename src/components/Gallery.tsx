@@ -913,7 +913,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
            )}
          </div>
           {/* Optional: Footer for actions like download, share from zoom modal */}
-          <DialogFooter className="p-2 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
+          <DialogFooter className="p-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between sm:justify-between">
              <Button
                onClick={() => {
                  if (currentFile) handleOpenEncryptShareDialog(currentFile);
