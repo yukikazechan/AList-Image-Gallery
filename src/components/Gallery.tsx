@@ -22,9 +22,11 @@ import {
   Trash2,
   Loader2,
   KeyRound,
-  Share2, 
+  Share2,
   Lock,
-  LibraryBig
+  LibraryBig,
+  ZoomIn,
+  ZoomOut
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -67,8 +69,13 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [originalFileUrl, setOriginalFileUrl] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<FileInfo | null>(null);
-  const [showFullImage, setShowFullImage] = useState<boolean>(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
+
+  // Zoom Modal States from ImageViewer
+  const [isZoomModalOpen, setIsZoomModalOpen] = useState<boolean>(false);
+  const [zoomedImageSrc, setZoomedImageSrc] = useState<string | null>(null);
+  const [zoomedImageAlt, setZoomedImageAlt] = useState<string>("");
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
 
   const [showPasswordDialog, setShowPasswordDialog] = useState<boolean>(false);
   const [passwordPromptPath, setPasswordPromptPath] = useState<string>("");
@@ -95,6 +102,19 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   
   const allDisplayedItemPaths = useMemo(() => displayedFiles.map(f => `${path}${path.endsWith('/') ? '' : '/'}${f.name}`), [displayedFiles, path]);
   const isAllSelected = useMemo(() => displayedFiles.length > 0 && selectedFilePaths.length === displayedFiles.length, [selectedFilePaths, displayedFiles.length]);
+
+  // Zoom Modal Functions from ImageViewer
+  const openZoomModal = (src: string | null, alt: string) => {
+    if (src) {
+      setZoomedImageSrc(src);
+      setZoomedImageAlt(alt);
+      setZoomLevel(1); // Reset zoom level when opening new image
+      setIsZoomModalOpen(true);
+    }
+  };
+  
+  const handleZoomIn = () => setZoomLevel(prev => Math.min(prev * 1.2, 5)); // Max zoom 5x
+  const handleZoomOut = () => setZoomLevel(prev => Math.max(prev / 1.2, 0.2)); // Min zoom 0.2x
 
   const loadFiles = useCallback(async (currentPathToLoad?: string, dirPassword?: string, pageToLoad: number = 1) => {
     if (!alistService) {
@@ -169,8 +189,57 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   };
 
   const handleNavigate = (file: FileInfo) => {
-    if (file.is_dir) { onPathChange(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`); } 
-    else { handleViewImage(file); }
+    if (file.is_dir) { onPathChange(`${path}${path.endsWith('/') ? '' : '/'}${file.name}`); }
+    else {
+      // Instead of old handleViewImage, prepare for zoom modal
+      if (!alistService) return;
+      setIsPreviewLoading(true); // Keep this for immediate feedback if needed, or remove if zoom modal handles its own loading state
+      setCurrentFile(file); // Keep for context if needed by zoom modal title or other actions
+      
+      const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
+      alistService.getFileLink(alistFilePath).then(directUrl => {
+        setOriginalFileUrl(directUrl); // Store original URL if needed for download or other actions
+        
+        // Fetch as blob to ensure correct display and potentially for zoom modal if it expects blob URLs
+        fetch(directUrl)
+          .then(response => {
+            if (!response.ok) {
+              console.warn(`Failed to fetch image as blob (${response.status} ${response.statusText}), using direct URL for zoom: ${directUrl}`);
+              openZoomModal(directUrl, file.name); // Open zoom modal with direct URL
+              return null; // Or throw error
+            }
+            return response.blob();
+          })
+          .then(blob => {
+            if (blob) {
+              let typedBlob = blob;
+              const fileExtension = file.name.split('.').pop()?.toLowerCase();
+              const correctMimeType = getMimeType(fileExtension);
+              if (!blob.type.startsWith('image/') && correctMimeType) {
+                try { typedBlob = new Blob([blob], { type: correctMimeType }); }
+                catch (blobError) { console.error("Error creating typed blob:", blobError); }
+              }
+              const blobUrl = URL.createObjectURL(typedBlob);
+              // Revoke previous blob URL if it exists and is a blob URL
+              if (currentImageUrl && currentImageUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(currentImageUrl);
+              }
+              setCurrentImageUrl(blobUrl); // Store for potential revocation or other uses
+              openZoomModal(blobUrl, file.name); // Open zoom modal with blob URL
+            }
+          })
+          .catch(fetchError => {
+            console.warn(`Error fetching image for blob: ${fetchError.message}. Using direct URL for zoom: ${directUrl}`);
+            openZoomModal(directUrl, file.name); // Fallback to direct URL
+          })
+          .finally(() => {
+            setIsPreviewLoading(false);
+          });
+      }).catch(error => {
+        toast.error(`${t('galleryErrorGettingImageLink')} ${error.message || t('galleryUnknownError')}`);
+        setIsPreviewLoading(false);
+      });
+    }
   };
   
   const getMimeType = useCallback((fileExtension?: string): string | undefined => {
@@ -183,29 +252,29 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
     }
   }, []);
 
-  const handleViewImage = async (file: FileInfo) => {
-    if (!alistService) return;
-    setIsPreviewLoading(true); setCurrentFile(file); 
-    if (currentImageUrl && currentImageUrl.startsWith('blob:')) { URL.revokeObjectURL(currentImageUrl); }
-    setCurrentImageUrl(null); setOriginalFileUrl(null);
-    try {
-      const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
-      const directUrl = await alistService.getFileLink(alistFilePath);
-      setOriginalFileUrl(directUrl); 
-      try {
-        const response = await fetch(directUrl);
-        if (!response.ok) { console.warn(`Failed to fetch image as blob (${response.status} ${response.statusText}), falling back to direct URL for: ${directUrl}`); setCurrentImageUrl(directUrl); } 
-        else {
-          const blob = await response.blob(); let typedBlob = blob;
-          const fileExtension = file.name.split('.').pop()?.toLowerCase();
-          const correctMimeType = getMimeType(fileExtension); 
-          if (!blob.type.startsWith('image/') && correctMimeType) { try { typedBlob = new Blob([blob], { type: correctMimeType }); } catch (blobError) { console.error("Error creating typed blob:", blobError); }}
-          const blobUrl = URL.createObjectURL(typedBlob); setCurrentImageUrl(blobUrl);
-        }
-      } catch (fetchError: any) { console.warn(`Error fetching image for blob: ${fetchError.message}. Falling back to direct URL: ${directUrl}`); setCurrentImageUrl(directUrl); }
-    } catch (error: any) { toast.error(`${t('galleryErrorGettingImageLink')} ${error.message || t('galleryUnknownError')}`); } 
-    finally { setIsPreviewLoading(false); }
-  };
+  // const handleViewImage = async (file: FileInfo) => { // This function is replaced by the logic in handleNavigate for non-dirs
+  //   if (!alistService) return;
+  //   setIsPreviewLoading(true); setCurrentFile(file);
+  //   if (currentImageUrl && currentImageUrl.startsWith('blob:')) { URL.revokeObjectURL(currentImageUrl); }
+  //   setCurrentImageUrl(null); setOriginalFileUrl(null);
+  //   try {
+  //     const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
+  //     const directUrl = await alistService.getFileLink(alistFilePath);
+  //     setOriginalFileUrl(directUrl);
+  //     try {
+  //       const response = await fetch(directUrl);
+  //       if (!response.ok) { console.warn(`Failed to fetch image as blob (${response.status} ${response.statusText}), falling back to direct URL for: ${directUrl}`); setCurrentImageUrl(directUrl); }
+  //       else {
+  //         const blob = await response.blob(); let typedBlob = blob;
+  //         const fileExtension = file.name.split('.').pop()?.toLowerCase();
+  //         const correctMimeType = getMimeType(fileExtension);
+  //         if (!blob.type.startsWith('image/') && correctMimeType) { try { typedBlob = new Blob([blob], { type: correctMimeType }); } catch (blobError) { console.error("Error creating typed blob:", blobError); }}
+  //         const blobUrl = URL.createObjectURL(typedBlob); setCurrentImageUrl(blobUrl);
+  //       }
+  //     } catch (fetchError: any) { console.warn(`Error fetching image for blob: ${fetchError.message}. Falling back to direct URL: ${directUrl}`); setCurrentImageUrl(directUrl); }
+  //   } catch (error: any) { toast.error(`${t('galleryErrorGettingImageLink')} ${error.message || t('galleryUnknownError')}`); }
+  //   finally { setIsPreviewLoading(false); }
+  // };
   
   const handleOpenEncryptShareDialog = (file: FileInfo) => {
     const enablePasswordless = localStorage.getItem("alist_enable_passwordless_share") === "true";
@@ -800,7 +869,7 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
                {files.filter(isImageFile).map((file) => (
                  <CarouselItem key={file.name} className="md:basis-1/2 lg:basis-1/3 xl:basis-1/4">
                    <div className="p-1"><Card><CardContent className="flex aspect-square items-center justify-center p-2 sm:p-4 md:p-6">
-                         <img src={file.thumb || "/placeholder.svg"} alt={file.name} className="object-contain h-full w-full rounded" onClick={() => handleViewImage(file)} style={{cursor: 'pointer'}} onError={(e) => {e.currentTarget.src = '/placeholder.svg';}}/>
+                         <img src={file.thumb || "/placeholder.svg"} alt={file.name} className="object-contain h-full w-full rounded" onClick={() => handleNavigate(file)} style={{cursor: 'pointer'}} onError={(e) => {e.currentTarget.src = '/placeholder.svg';}}/>
                        </CardContent></Card></div>
                  </CarouselItem>
                ))}
@@ -810,33 +879,65 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
            </Carousel>
          </div>
        )}
-       {(currentFile && (currentImageUrl || isPreviewLoading)) && (
-         <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4" onClick={() => { setCurrentFile(null); if (currentImageUrl && currentImageUrl.startsWith('blob:')) { URL.revokeObjectURL(currentImageUrl); } setCurrentImageUrl(null); setOriginalFileUrl(null); }}>
-           <div className="relative bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 rounded-lg max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-             <div className="p-3 sm:p-4 flex justify-between items-center border-b border-slate-200 dark:border-slate-700">
-               <h3 className="font-medium text-sm sm:text-base truncate pr-2" title={currentFile?.name}>{currentFile?.name || t('galleryImagePreview')}</h3>
-               <Button variant="ghost" size="sm" onClick={() => { setCurrentFile(null); if (currentImageUrl && currentImageUrl.startsWith('blob:')) { URL.revokeObjectURL(currentImageUrl); } setCurrentImageUrl(null); setOriginalFileUrl(null); }}>{t('galleryClose')}</Button>
-             </div>
-             <div className="p-2 sm:p-4 flex-grow flex items-center justify-center overflow-auto" style={{ maxHeight: 'calc(90vh - 120px)' }}>
-              {isPreviewLoading && (<Loader2 className="h-12 w-12 sm:h-16 sm:w-16 animate-spin text-gray-500 dark:text-gray-400" />)}
-              {!isPreviewLoading && currentImageUrl && (
-                <img src={currentImageUrl} alt={currentFile?.name || "Preview"} className={`${showFullImage ? 'cursor-zoom-out' : 'cursor-zoom-in object-contain'}`} style={{ display: isPreviewLoading ? 'none' : 'block', maxWidth: showFullImage ? 'none' : '100%', maxHeight: showFullImage ? 'none' : 'calc(90vh - 120px - 4rem)', width: 'auto', height: 'auto' }} onClick={() => setShowFullImage(!showFullImage)} onError={(e) => { e.currentTarget.src = '/placeholder.svg'; toast.error(t('galleryErrorLoadingPreview'));}}/>
-              )}
-              {!isPreviewLoading && !currentImageUrl && currentFile && (
-                 <div className="text-center text-red-500 dark:text-red-400 p-4"><p>{t('galleryErrorLoadingPreview')}</p>{originalFileUrl && (<a href={originalFileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 dark:text-blue-400 underline">{t('galleryTryOpeningDirectly')}</a>)}</div>
-              )}
-             </div>
-             <div className="p-2 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
-               <Button onClick={() => currentFile && handleOpenEncryptShareDialog(currentFile)} size="sm">
-                 <Share2 className="mr-1.5 h-4 w-4" /> {t('copyPreviewLinkButton')} 
-               </Button>
-                <Button onClick={() => setShowFullImage(!showFullImage)} disabled={!currentImageUrl || isPreviewLoading} size="sm">
-                  {showFullImage ? t('zoomOutButton') : t('zoomInButton')}
-                </Button>
-             </div>
+     {/* Removed old preview modal. New Zoom Modal from ImageViewer will be used. */}
+
+     {/* Zoom Modal - Copied and adapted from ImageViewer.tsx */}
+     <Dialog open={isZoomModalOpen} onOpenChange={setIsZoomModalOpen}>
+       <DialogContent className="max-w-[90vw] max-h-[90vh] w-auto h-auto p-2 sm:p-4 flex flex-col bg-white dark:bg-black !rounded-lg">
+         <DialogHeader className="flex flex-row justify-between items-center py-3">
+           <DialogTitle className="truncate max-w-[calc(100%-130px)] text-sm sm:text-base">{zoomedImageAlt}</DialogTitle>
+           <div className="flex items-center space-x-1.5 flex-shrink-0">
+               <Button variant="ghost" size="icon" onClick={handleZoomOut} title={t('imageViewer.zoomOut', "Zoom Out")}><ZoomOut className="h-5 w-5"/></Button>
+               <Button variant="ghost" size="icon" onClick={handleZoomIn} title={t('imageViewer.zoomIn', "Zoom In")}><ZoomIn className="h-5 w-5"/></Button>
+               {/* The default X button from DialogContent will be to the right of this div */}
            </div>
+         </DialogHeader>
+         <div className={`w-full flex-grow relative overflow-auto pt-2 ${zoomLevel <= 1 ? 'flex items-center justify-center' : ''} dark:bg-black`}>
+           {zoomedImageSrc && (
+             <img
+               src={zoomedImageSrc}
+               alt={zoomedImageAlt}
+               className={`transition-transform duration-200 ease-out ${zoomLevel <= 1 ? 'max-w-full max-h-full object-contain' : 'cursor-grab active:cursor-grabbing'}`}
+               style={{
+                 transform: `scale(${zoomLevel})`,
+                 transformOrigin: zoomLevel <= 1 ? 'center center' : '0 0',
+                 display: 'block'
+               }}
+               onError={(e) => {
+                 e.currentTarget.src = '/placeholder.svg';
+                 toast.error(t('galleryErrorLoadingPreview', 'Error loading image preview.'));
+                 // Optionally close modal or show error message within modal
+                 // setIsZoomModalOpen(false);
+               }}
+             />
+           )}
          </div>
-       )}
+          {/* Optional: Footer for actions like download, share from zoom modal */}
+          <DialogFooter className="p-2 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
+             <Button
+               onClick={() => {
+                 if (currentFile) handleOpenEncryptShareDialog(currentFile);
+                 else if (zoomedImageAlt) { // Fallback if currentFile is not set, try to find by alt
+                   const fileByName = files.find(f => f.name === zoomedImageAlt);
+                   if (fileByName) handleOpenEncryptShareDialog(fileByName);
+                   else toast.error(t('galleryCannotShareFromZoom', 'Cannot determine file to share.'));
+                 }
+               }}
+               size="sm"
+               disabled={!currentFile && !files.find(f => f.name === zoomedImageAlt)}
+             >
+                <Share2 className="mr-1.5 h-4 w-4" /> {t('copyPreviewLinkButton', 'Share Link')}
+             </Button>
+             {originalFileUrl && (
+               <Button asChild size="sm" variant="outline">
+                 <a href={originalFileUrl} download={zoomedImageAlt || 'image'} target="_blank" rel="noopener noreferrer">
+                   {t('galleryDownloadOriginal', 'Download Original')}
+                 </a>
+               </Button>
+             )}
+           </DialogFooter>
+       </DialogContent>
+     </Dialog>
 
      <Dialog open={showManualCopyDialog} onOpenChange={setShowManualCopyDialog}>
        <DialogContent className="sm:max-w-md">
