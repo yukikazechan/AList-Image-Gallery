@@ -125,5 +125,8 @@
   "tokenInputEnablePasswordlessShareHint": "If enabled, shared links won't require users to enter a password. The Default Share Password will be used internally.",
   "galleryCustomTitleLabel": "Gallery Title (Optional)",
   "galleryCustomTitlePlaceholder": "Enter custom gallery title",
-  "galleryMultiShareEncryptDescPasswordless": "Enter a title for your gallery (optional). The link will be secured with the default password."
+  "galleryMultiShareEncryptDescPasswordless": "Enter a title for your gallery (optional). The link will be secured with the default password.",
+  "imageUploaderUploadedImages": "Uploaded Images",
+  "imageUploaderLoadMorePreviews": "Load More Previews",
+  "imageUploaderRemaining": "remaining"
 }

@@ -51,6 +51,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const [directories, setDirectories] = useState<FileInfo[]>([]);
   const [numDisplayedPreviews, setNumDisplayedPreviews] = useState<number>(10); // For pre-upload previews
   const PREVIEWS_PER_LOAD = 10; // Number of previews to load each time
+  const [numDisplayedUploadedItems, setNumDisplayedUploadedItems] = useState<number>(PREVIEWS_PER_LOAD); // For post-upload items
   const [isLoadingDirs, setIsLoadingDirs] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
@@ -62,6 +63,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const [showManualCopyDialog, setShowManualCopyDialog] = useState<boolean>(false);
   const [linkToCopyManually, setLinkToCopyManually] = useState<string | null>(null);
   const manualCopyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  // State for displaying generated MD/HTML/UBB links before copying
+  const [generatedLinkContent, setGeneratedLinkContent] = useState<{ itemAlistPath: string, type: 'md' | 'html' | 'ubb', content: string } | null>(null);
   const folderInputRef = useRef<HTMLInputElement>(null); // Ref for hidden folder input
 
   useEffect(() => {
@@ -105,6 +108,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUploadedItems([]); // Clear previously uploaded items display
+    setNumDisplayedUploadedItems(PREVIEWS_PER_LOAD); // Reset count for uploaded items as well
     setSelectedFilePreviews([]); // Clear previous selections
     setNumDisplayedPreviews(PREVIEWS_PER_LOAD); // Reset displayed previews count
 
@@ -286,6 +290,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       }
     } // This closes the for loop (line 218)
     setUploadedItems(newUploadedItems);
+    setNumDisplayedUploadedItems(PREVIEWS_PER_LOAD); // Reset display count for new uploads
     setIsUploading(false);
     if (anyUploadSucceeded) {
         onUploadSuccess();
@@ -441,7 +446,12 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     try {
       const directUrl = await alistService.getFileLink(alistPath);
       if (directUrl) {
-        copyToClipboard(`![${fileName}](${directUrl})`, 'Markdown Link');
+        const content = `![${fileName}](${directUrl})`;
+        if (generatedLinkContent?.itemAlistPath === alistPath && generatedLinkContent.type === 'md') {
+          setGeneratedLinkContent(null); // Toggle off if already shown
+        } else {
+          setGeneratedLinkContent({ itemAlistPath: alistPath, type: 'md', content });
+        }
       } else {
         toast.error(t('galleryErrorGettingDirectLink'));
       }
@@ -455,7 +465,12 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     try {
       const directUrl = await alistService.getFileLink(alistPath);
       if (directUrl) {
-        copyToClipboard(`<img src="${directUrl}" alt="${fileName}">`, 'HTML Link');
+        const content = `<img src="${directUrl}" alt="${fileName}">`;
+        if (generatedLinkContent?.itemAlistPath === alistPath && generatedLinkContent.type === 'html') {
+          setGeneratedLinkContent(null);
+        } else {
+          setGeneratedLinkContent({ itemAlistPath: alistPath, type: 'html', content });
+        }
       } else {
         toast.error(t('galleryErrorGettingDirectLink'));
       }
@@ -469,7 +484,12 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     try {
       const directUrl = await alistService.getFileLink(alistPath);
       if (directUrl) {
-        copyToClipboard(`[img]${directUrl}[/img]`, 'UBB Link');
+        const content = `[img]${directUrl}[/img]`;
+        if (generatedLinkContent?.itemAlistPath === alistPath && generatedLinkContent.type === 'ubb') {
+          setGeneratedLinkContent(null);
+        } else {
+          setGeneratedLinkContent({ itemAlistPath: alistPath, type: 'ubb', content });
+        }
       } else {
         toast.error(t('galleryErrorGettingDirectLink'));
       }
@@ -633,8 +653,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
           {uploadedItems.length > 0 && (
             <div className="mt-6 space-y-4">
               <h3 className="font-medium">{t('imageUploaderUploadedImages')}</h3>
-              {uploadedItems.map((item, index) => (
-                <Card key={index} className="p-3">
+              {uploadedItems.slice(0, numDisplayedUploadedItems).map((item, index) => (
+                <Card key={item.alistPath + '-' + index} className="p-3"> {/* Ensure unique key if names can repeat */}
                   <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
                     {item.localPreviewUrl && (
                       <img
@@ -659,14 +679,54 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
                        <Button variant="outline" size="sm" onClick={() => handleCopyMarkdownLinkForUploader(item.alistPath, item.fileName)} title={t('galleryCopyMarkdownTooltip')}>MD</Button>
                        <Button variant="outline" size="sm" onClick={() => handleCopyHtmlLinkForUploader(item.alistPath, item.fileName)} title={t('galleryCopyHtmlTooltip')}>HTML</Button>
                        <Button variant="outline" size="sm" onClick={() => handleCopyUbbLinkForUploader(item.alistPath, item.fileName)} title={t('galleryCopyUbbTooltip')}>UBB</Button>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-      </CardContent>
+                   </div>
+                 </div>
+                 {generatedLinkContent && generatedLinkContent.itemAlistPath === item.alistPath && (
+                   <div className="mt-2 space-y-1">
+                     <Label htmlFor={`generated-link-${index}-${generatedLinkContent.type}`} className="text-xs">
+                       {generatedLinkContent.type.toUpperCase()} {t('imageUploaderLinkFor', {fileName: item.fileName})}
+                     </Label>
+                     <Textarea
+                       id={`generated-link-${index}-${generatedLinkContent.type}`}
+                       readOnly
+                       value={generatedLinkContent.content}
+                       className="h-20 text-xs font-mono"
+                       onFocus={(e) => e.target.select()}
+                     />
+                     <div className="flex justify-end space-x-2">
+                       <Button
+                         variant="ghost"
+                         size="sm"
+                         onClick={() => setGeneratedLinkContent(null)}
+                       >
+                         {t('galleryCloseButton', 'Close')}
+                       </Button>
+                       <Button
+                         size="sm"
+                         onClick={() => copyToClipboard(generatedLinkContent.content, `${generatedLinkContent.type.toUpperCase()} Link`)}
+                       >
+                         <Copy className="mr-1.5 h-3.5 w-3.5" /> {t('imageUploaderCopy', 'Copy')}
+                       </Button>
+                     </div>
+                   </div>
+                 )}
+               </Card>
+             ))}
+             {uploadedItems.length > numDisplayedUploadedItems && (
+               <div className="text-center mt-4">
+                 <Button
+                   variant="outline"
+                   size="sm"
+                   onClick={() => setNumDisplayedUploadedItems(prev => Math.min(prev + PREVIEWS_PER_LOAD, uploadedItems.length))}
+                 >
+                   {t('imageUploaderLoadMorePreviews', 'Load More Uploaded')} ({uploadedItems.length - numDisplayedUploadedItems} {t('imageUploaderRemaining', 'remaining')})
+                 </Button>
+               </div>
+             )}
+           </div>
+         )}
+       </div>
+     </CardContent>
       <Dialog open={showUploadEncryptShareDialog} onOpenChange={setShowUploadEncryptShareDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
