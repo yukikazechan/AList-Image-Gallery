@@ -480,31 +480,46 @@ const Gallery: React.FC<GalleryProps> = ({ alistService, path, onPathChange, dir
   const handleCopyMarkdownLink = async (file: FileInfo) => {
     if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing')); return; }
     const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
-    const viewerLink = generateViewerLink(alistFilePath);
-    // Use the original viewerLink for the content, not the short one.
-    // Pass true for isRawLink to prevent copyHelper from trying to shorten the entire markdown string.
-    if(viewerLink) await copyHelper(`![${file.name}](${viewerLink})`, 'markdownLinkCopied', 'galleryErrorCopyingMarkdownLink', true);
-    else toast.error(t('galleryErrorCopyingMarkdownLink'));
+    try {
+      const directUrl = await alistService.getFileLink(alistFilePath);
+      if (directUrl) {
+        await copyHelper(`![${file.name}](${directUrl})`, 'markdownLinkCopied', 'galleryErrorCopyingMarkdownLink', true);
+      } else {
+        toast.error(t('galleryErrorGettingDirectLink'));
+      }
+    } catch (error: any) {
+      toast.error(`${t('galleryErrorGettingDirectLink')} ${error.message || ''}`);
+    }
   };
 
   const handleCopyHtmlLink = async (file: FileInfo) => {
     if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing')); return; }
     const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
-    const viewerLink = generateViewerLink(alistFilePath);
-    // Use the original viewerLink for the content, not the short one.
-    // Pass true for isRawLink to prevent copyHelper from trying to shorten the entire HTML string.
-    if(viewerLink) await copyHelper(`<img src="${viewerLink}" alt="${file.name}">`, 'htmlLinkCopied', 'galleryErrorCopyingHtmlLink', true);
-    else toast.error(t('galleryErrorCopyingHtmlLink'));
+    try {
+      const directUrl = await alistService.getFileLink(alistFilePath);
+      if (directUrl) {
+        await copyHelper(`<img src="${directUrl}" alt="${file.name}">`, 'htmlLinkCopied', 'galleryErrorCopyingHtmlLink', true);
+      } else {
+        toast.error(t('galleryErrorGettingDirectLink'));
+      }
+    } catch (error: any) {
+      toast.error(`${t('galleryErrorGettingDirectLink')} ${error.message || ''}`);
+    }
   };
 
   const handleCopyUbbLink = async (file: FileInfo) => {
     if (!alistService) { toast.error(t('galleryErrorAlistServiceMissing')); return; }
     const alistFilePath = `${path}${path.endsWith('/') ? '' : '/'}${file.name}`;
-    const viewerLink = generateViewerLink(alistFilePath);
-    // Use the original viewerLink for the content, not the short one.
-    // Pass true for isRawLink to prevent copyHelper from trying to shorten the entire UBB string.
-    if(viewerLink) await copyHelper(`[img]${viewerLink}[/img]`, 'ubbLinkCopied', 'galleryErrorCopyingUbbLink', true);
-    else toast.error(t('galleryErrorCopyingUbbLink'));
+    try {
+      const directUrl = await alistService.getFileLink(alistFilePath);
+      if (directUrl) {
+        await copyHelper(`[img]${directUrl}[/img]`, 'ubbLinkCopied', 'galleryErrorCopyingUbbLink', true);
+      } else {
+        toast.error(t('galleryErrorGettingDirectLink'));
+      }
+    } catch (error: any) {
+      toast.error(`${t('galleryErrorGettingDirectLink')} ${error.message || ''}`);
+    }
   };
 
   const handleCopyThumbnailLink = async (file: FileInfo) => {
