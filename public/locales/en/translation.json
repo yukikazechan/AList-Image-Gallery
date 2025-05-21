@@ -128,5 +128,6 @@
   "galleryMultiShareEncryptDescPasswordless": "Enter a title for your gallery (optional). The link will be secured with the default password.",
   "imageUploaderUploadedImages": "Uploaded Images",
   "imageUploaderLoadMorePreviews": "Load More Previews",
-  "imageUploaderRemaining": "remaining"
+  "imageUploaderRemaining": "remaining",
+  "imageUploaderLinkFor": "{{type}} link for {{fileName}}:"
 }

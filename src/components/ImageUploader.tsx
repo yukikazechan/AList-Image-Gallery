@@ -486,8 +486,9 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       const directUrl = await alistService.getFileLink(alistPath);
       if (directUrl) {
         const content = `![${fileName}](${directUrl})`;
+        copyToClipboard(content, `Markdown Link for ${fileName}`); // Attempt to copy immediately
         if (generatedLinkContent?.itemAlistPath === alistPath && generatedLinkContent.type === 'md') {
-          setGeneratedLinkContent(null); // Toggle off if already shown
+          setGeneratedLinkContent(null);
         } else {
           setGeneratedLinkContent({ itemAlistPath: alistPath, type: 'md', content });
         }
@@ -505,6 +506,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       const directUrl = await alistService.getFileLink(alistPath);
       if (directUrl) {
         const content = `<img src="${directUrl}" alt="${fileName}">`;
+        copyToClipboard(content, `HTML Link for ${fileName}`); // Attempt to copy immediately
         if (generatedLinkContent?.itemAlistPath === alistPath && generatedLinkContent.type === 'html') {
           setGeneratedLinkContent(null);
         } else {
@@ -524,6 +526,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       const directUrl = await alistService.getFileLink(alistPath);
       if (directUrl) {
         const content = `[img]${directUrl}[/img]`;
+        copyToClipboard(content, `UBB Link for ${fileName}`); // Attempt to copy immediately
         if (generatedLinkContent?.itemAlistPath === alistPath && generatedLinkContent.type === 'ubb') {
           setGeneratedLinkContent(null);
         } else {

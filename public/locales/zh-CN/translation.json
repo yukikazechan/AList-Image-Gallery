@@ -257,5 +257,6 @@
   "galleryMultiShareEncryptDescPasswordless": "为您的画廊输入一个标题（可选）。链接将使用预设的默认密码进行加密。",
   "imageUploaderUploadedImages": "已上传图片",
   "imageUploaderLoadMorePreviews": "加载更多预览",
-  "imageUploaderRemaining": "剩余"
+  "imageUploaderRemaining": "剩余",
+  "imageUploaderLinkFor": "{{fileName}} 的 {{type}} 链接："
 }
